@@ -23,7 +23,7 @@ PMEMoid btree_remove(PMEMobjpool *pop, TOID(struct btree) tree,
 int btree_remove_free(PMEMobjpool *pop, TOID(struct btree) tree,
 		uint64_t key);
 int btree_clear(PMEMobjpool *pop, TOID(struct btree) tree);
-PMEMoid btree_get(PMEMobjpool *pop, TOID(struct btree) tree,
+PMEMoid btree_get(TOID(struct btree) tree,
 		uint64_t key);
 int btree_lookup(PMEMobjpool *pop, TOID(struct btree) tree,
 		uint64_t key);
