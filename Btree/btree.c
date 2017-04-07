@@ -17,22 +17,47 @@ struct tree_node{
 struct btree{
     TOID(struct tree_node) root;
 };
+
+
+/*
+ *bsearch_in_node -- (internal) get the index of the key if exists
+ */
+int bsearch_in_node(TOID(struct tree_node) node,uint64_t key){
+    if(D_R0(node)->keys[0]>key){         
+        return -1;
+    }
+    if(D_RO(node)->keys[D_RO(node)->n-1]<=key){
+        return D_RO(node)->n - 1;
+    }
+    int left = 0,right = D_RO(node)->n-1;
+    while(left <= right){
+        int mid = (right+left)/2;
+        if(D_RO(node)->keys[mid]==key){
+            return mid;
+        }else{
+            if(D_RO(node)->keys[mid]<key){
+                left = mid + 1;
+            }else{
+                right = mid - 1;
+            }
+        }
+    }return mid;
+}
+
+
+
 /*
  *btree_get_in_node --(internal) search for a value of the key in a node
  */
 static PMEMoid btree_get_in_node(TOID(struct tree_node) node,uint64_t key){
-    if(D_RO(node)->keys[0]>key) return OID_NULL;
-    for(int i = D_RO(node)->n-1;i >= 0 ;--i){
-        if(D_RO(node)->keys[i]==key){
-            return (D_RO(node)->is_leaf)?D_RO(node)->values[i]:btree_get_in_node(D_RO(node)->slots[i],key);
-        }else{
-            if(D_RO(node)->keys[i] < key){
-                return (D_RO(node)->is_leaf)?OID_NULL:btree_get_in_node(D_RO(node)->slots[i],key);
-            }
-        }
-    }
-    return OID_NULL;
+    int index = bsearch_in_node(node,key);
+    if(index==-1){
+        return OID_NULL;
+    }if(D_RO(node)->is_leaf){
+        return (D_RO(node)->keys[index]==key)?D_RO(node)->values[index]:OID_NULL;
+    }return (D_RO(node)->slots[index]==OID_NULL)?OID_NULL:btree_get_in_node(D_RO(node)->slots[index],key);
 }
+
 /*
  *btree_get --search for a value of the key in a tree;
  */
@@ -44,17 +69,12 @@ PMEMoid btree_get(TOID(struct btree) tree,uint64_t key){
  *btree_lookup_in_node --(internal) search for key in node if exists
  */
 static int btree_lookup_in_node(TOID(struct tree_node) node,uint64_t key){
-    if(D_RO(node)->keys[0]>key) return 0;
-    for(int i = D_RO(node)->n-1;i >= 0 ;--i){
-        if(D_RO(node)->keys[i]==key){
-            return (D_RO(node)->is_leaf)?1:btree_get_in_node(D_RO(node)->slots[i],key);
-        }else{
-            if(D_RO(node)->keys[i] < key){
-                return (D_RO(node)->is_leaf)?OID_NULL:btree_get_in_node(D_RO(node)->slots[i],key);
-            }
-        }
-    }
-    return 0;
+    int index = bsearch_in_node(node,key);
+    if(index==-1){
+        return 0;
+    }if(D_RO(node)->is_leaf){
+        return (D_RO(node)->keys[index]==key)?1:0;
+    }return (D_RO(node)->slots[index]==OID_NULL)?0:btree_get_in_node(D_RO(node)->slots[index],key);
 }
 
 /*
