@@ -7,27 +7,48 @@
 #ifndef BTREE_TYPE_OFFSET
 #define BTREE_TYPE_OFFSET 1012
 #endif
-struct btree;
-TOID_DECLARE(struct btree, BTREE_TYPE_OFFSET + 0);
-int btree_check(PMEMobjpool *pop, TOID(struct btree) tree);
-int btree_create(PMEMobjpool *pop, TOID(struct btree) * tree, void *arg);
-int btree_destroy(PMEMobjpool *pop, TOID(struct btree) * tree);
-int btree_insert(PMEMobjpool *pop, TOID(struct btree) tree,
-    uint64_t key, PMEMoid value);
-int btree_insert_new(PMEMobjpool *pop, TOID(struct btree) tree,
-    uint64_t key, size_t size, unsigned type_num,
-    void (*constructor)(PMEMobjpool *pop, void *ptr, void *arg),
-		void *arg);
-PMEMoid btree_remove(PMEMobjpool *pop, TOID(struct btree) tree,
-		uint64_t key);
-int btree_remove_free(PMEMobjpool *pop, TOID(struct btree) tree,
-		uint64_t key);
-int btree_clear(PMEMobjpool *pop, TOID(struct btree) tree);
-PMEMoid btree_get(TOID(struct btree) tree,
-		uint64_t key);
-int btree_lookup(PMEMobjpool *pop, TOID(struct btree) tree,
-		uint64_t key);
-int btree_foreach(PMEMobjpool *pop, TOID(struct btree) tree,
-	int (*cb)(uint64_t key, PMEMoid value, void *arg), void *arg);
-int btree_is_empty(PMEMobjpool *pop, TOID(struct btree) tree);
+#define BTREE_ORDER 8
+#define BTREE_MIN ((BTREE_ORDER / 2) - 1)
+#define TRUE  1
+#define FALSE 0
+TOID_DECLARE(struct tree_node,BTREE_TYPE_OFFSET);
+TOID_DECLARE(struct tree,BTREE_TYPE_OFFSET+1);
+/*
+ *tree_node--struct of B+tree interval node or leaf
+ *pointers[i] point to the ist child of node if is_leaf is 'TRUE'
+ *else,point to the value which key is the keys[i]
+ */
+struct tree_node{
+    int keys[BTREE_ORDER];
+    PMEMoid pointers[BTREE_ORDER+1]; 
+    int num_keys;
+    int is_leaf;
+    TOID(struct tree_node) parent;
+};
+struct tree{
+    TOID(struct tree_node) root;
+};
+#define node_pointer TOID(struct tree_node)
+//Output
+node_pointer find_leaf(node_pointer root,uint64_t key);
+PMEMoid find(node_pointer root,uint64_t key);
+//Insertion
+PMEMoid make_node();
+PMEMoid make_leaf();
+int get_left_index(node_pointer parent,node_pointer left);
+node_pointer insert_into_leaf(node_pointer leaf,int key,PMEMoid value);
+node_pointer insert_into_leaf_after_splitting(node_pointer root,node_pointer parent,int left_index,node_pointer right);
+node_pointer insert_into_node(node_pointer root,node_pointer parent,int left_index,int key,node_pointer right);
+node_pointer insert_into_node_after_splitting(node_pointer root,node_pointer parent,int left,int key,node_pointer right);
+node_pointer insert_into_parent(node_pointer root,node_pointer left,int key,node_pointer right);
+node_pointer insert_into_new_root(node_pointer left,int key,node_pointer right);
+node_pointer start_new_tree(int key,PMEMoid value);
+node_pointer tree_insert(node_pointer root,int key,PMEMoid value);
+//Deletion
+int get_neighbor_index(node_pointer n);
+node_pointer adjust_root(node_pointer root);
+node_pointer coalesce_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime);
+node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer neighbot,int neighbor_index,int k_prime,int k_prime_index);
+node_pointer delete_entry(node_pointer root,node_pointer n,int key);
+node_pointer tree_delete(node_pointer root,int key);
 #endif // BTREE_H_INCLUDED
