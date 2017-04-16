@@ -30,8 +30,8 @@ struct tree{
 };
 #define node_pointer TOID(struct tree_node)
 //Output
-node_pointer find_leaf(node_pointer root,uint64_t key);
-PMEMoid find(node_pointer root,uint64_t key);
+node_pointer find_leaf(node_pointer root,int key);
+PMEMoid find(node_pointer root,int key);
 //Insertion
 PMEMoid make_node();
 PMEMoid make_leaf();

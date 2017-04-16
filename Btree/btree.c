@@ -3,23 +3,54 @@
 #include <string.h>
 #include <libpmemobj.h>
 #include "btree.h"
+/*
+ *binary_search_exact--(interval)return index of key in the keys,if not exists,return -1
+ */
+static int binary_search_exact(node_pointer n,int key){
+    int left = 0,right = D_RO(n)->num_keys - 1;
+    while(left<=right)
+    {
+        int mid = (left+right)/2;
+        if(D_RO(n)->keys[mid]==key)
+        {
+            return mid;
+        }
+        if(D_RO(n)->keys[mid]>key)
+        {
+            right = mid-1;
+        }
+        else
+        {
+            left = mid+1;
+        }
+    }return -1;
+}
+/*
+ *binary_search--(interval) return the index of pointers,which may include the key 
+ */
+static int binary_search(node_pointer n,int key){
+    
+    int left = 0,right = D_RO(n)->num_keys - 1;
+    while(left <= right){
+        int mid = (left + right)/2;
+        if(D_RO(n)->num_keys[mid] > key){
+            right =  mid - 1;
+        }else{
+            left = mid + 1;
+        }
+    }return left;
+}
 //Output
-node_pointer find_leaf(node_pointer root,uint64_t key){
+node_pointer find_leaf(node_pointer root,int key){
    node_pointer c = root;
    if(TOID_IS_NULL(c)){
        return c;
    }while(!D_RO(c)->is_leaf){
-        int i = 0;
-        while(i < D_RO(c)->num_keys){
-            if(key >= )
-        }
-   }
+       int index =  binary_search(c,key);
+       TOID_ASSIGN(c,D_RO(c)->pointers[index]);
+   }return c;
 }
-//Look up
-static int binary_search_exact(){
-   return 0;
-}
-PMEMoid find(node_pointer root,uint64_t key);
+PMEMoid find(node_pointer root,int key);
 //Insertion
 PMEMoid make_node();
 PMEMoid make_leaf();
