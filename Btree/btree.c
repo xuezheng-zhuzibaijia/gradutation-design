@@ -41,6 +41,9 @@ static int binary_search(node_pointer n,int key){
     }return left;
 }
 //Output
+/*
+ *find_leaf--return the leaf which may contain the key
+ */
 node_pointer find_leaf(node_pointer root,int key){
    node_pointer c = root;
    if(TOID_IS_NULL(c)){
@@ -50,7 +53,14 @@ node_pointer find_leaf(node_pointer root,int key){
        TOID_ASSIGN(c,D_RO(c)->pointers[index]);
    }return c;
 }
-PMEMoid find(node_pointer root,int key);
+/*
+ *find--return the value of key if exists,else return OID_NULL
+ */
+PMEMoid find(node_pointer root,int key){
+    node_pointer leaf = find_leaf(root,key);
+    int index = binary_search_exact(leaf,key);
+    return (index==-1)?OID_NULL:leaf->pointers[index];
+}
 //Insertion
 PMEMoid make_node();
 PMEMoid make_leaf();
