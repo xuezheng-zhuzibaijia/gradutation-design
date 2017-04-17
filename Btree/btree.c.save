@@ -201,7 +201,7 @@ node_pointer start_new_tree(int key,PMEMoid value){
     return root;
 }
 /*
- *tree_insert--the abstract interface for user to use to insert a key/value
+ *tree_insert--the 
  */
 node_pointer tree_insert(node_pointer root,int key,PMEMoid value){
     if(!OID_IS_NULL(find(root,key))){
