@@ -28,6 +28,7 @@ struct tree_node{
 struct tree{
     TOID(struct tree_node) root;
 };
+#define TOIDNULL (TOID_NULL(struct node))
 typedef TOID(struct tree_node) node_pointer;
 //Output
 node_pointer find_leaf(node_pointer root,int key);
@@ -47,8 +48,9 @@ node_pointer tree_insert(node_pointer root,int key,PMEMoid value);
 //Deletion
 int get_neighbor_index(node_pointer n);
 node_pointer adjust_root(node_pointer root);
+node_pointer remove_entry_from_node(node_pointer n,int key);
 node_pointer coalesce_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime);
-node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer neighbot,int neighbor_index,int k_prime,int k_prime_index);
+node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime,int k_prime_index);
 node_pointer delete_entry(node_pointer root,node_pointer n,int key);
 node_pointer tree_delete(node_pointer root,int key);
 #endif // BTREE_H_INCLUDED
