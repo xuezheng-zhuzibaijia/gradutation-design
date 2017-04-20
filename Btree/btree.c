@@ -208,14 +208,15 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
     for(int i=0,j = split_index+1; j < D_RO(n)->num_keys; j++,i++)
     {
         TX_SET(new_n,keys[i],D_RO(n)->keys[j]);
-        TX_SET(new_n,pointers[i],D_RO(n)->pointers[j]);
-        TOID_ASSIGN(temp,D_RO(new_n)->pointers[i]);
+        TX_SET(new_n,pointers[i+1],D_RO(n)->pointers[j+1]);
+        TOID_ASSIGN(temp,D_RO(new_n)->pointers[i+1]);
         TX_SET(temp,parent,new_n);
     }
     int new_n_index = D_RO(n)->num_keys-split_index-1;
+    printf(" new n has %d keys\n",new_n_index);
+    TX_SET(new_n,pointers[0],D_RO(n)->pointers[split_index+1]);
     TX_SET(n,num_keys,split_index);
     TX_SET(new_n,num_keys,new_n_index);
-    TX_SET(new_n,pointers[D_RO(new_n)->num_keys],D_RO(n)->pointers[split_index]);
     TOID_ASSIGN(temp,D_RO(new_n)->pointers[D_RO(new_n)->num_keys]);
     TX_SET(temp,parent,new_n);
     if(index<split_index)
@@ -244,11 +245,11 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
         TX_SET(right,parent,parent);
         if(D_RO(parent)->num_keys < BTREE_ORDER)
         {
-            insert_into_node(root,parent,key,right);
+            root = insert_into_node(root,parent,key,right);
         }
         else
         {
-            insert_into_node_after_splitting(root,parent,key,right);
+            root = insert_into_node_after_splitting(root,parent,key,right);
         }
     }
     return root;
@@ -258,6 +259,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
  */
  node_pointer insert_into_new_root(node_pointer left,int key,node_pointer right)
 {
+    printf("now in insert into new root key is %d\n",key);
     node_pointer root = make_node();
     TX_SET(root,num_keys,1);
     TX_SET(root,pointers[0],left.oid);
