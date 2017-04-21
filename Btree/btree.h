@@ -37,8 +37,7 @@ PMEMoid make_record(void *value,size_t len);
 void tree_insert(char *popname,int key,void *value,size_t len);
 void tree_delete(PMEMobjpool *pop,int key);
 void destroy_tree(PMEMobjpool *pop);
-void display(PMEMobjpool *pop);
-
+void display(char *popname);
 //Insertion
 node_pointer find_leaf(node_pointer root,int key);
 node_pointer make_node();
