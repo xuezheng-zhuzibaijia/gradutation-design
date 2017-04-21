@@ -158,10 +158,8 @@ static void print_rank(char *buf,node_pointer root,int height)
         strcat(buf,"}\n");
     }
 }
-static char* print_declare(PMEMobjpool *pop)
+static char* print_declare(node_pointer root)
 {
-    TOID(struct tree) t = POBJ_ROOT(pop,struct tree);
-    node_pointer root = D_RO(t)->root;
     char *buf = (char*)malloc(sizeof(char)*MAX_BUFFER_SIZE);
     if(buf==NULL)
     {
@@ -180,18 +178,11 @@ static char* print_declare(PMEMobjpool *pop)
     print_rank(buf,root,height);
     strcat(buf,"}\n");
     int length = strlen(buf)+1;
-    //printf("buf length = %d\n",length);
     return buf;
 }
-void display(char *popname)
+static void display_node(node_pointer root)
 {
-    PMEMobjpool * pop = pmemobj_open("treefile",POBJ_LAYOUT_NAME(example));
-    if(pop==NULL)
-    {
-        perror("DISPLAY FAILED");
-        exit(EXIT_FAILURE);
-    }
-    char * buf = print_declare(pop);
+    char * buf = print_declare(root);
     FILE * fp = fopen("display.dot","w");
     fwrite(buf,strlen(buf)+1,sizeof(char),fp);
     fclose(fp);
@@ -239,7 +230,12 @@ void display(char *popname)
                 wait(NULL);
             }
         }
-    }pmemobj_close(pop);
+    }
+}
+void display(PMEMobjpool *pop){
+    TOID(struct tree) myroot = POBJ_ROOT(pop,struct tree);
+    node_pointer root = D_RO(myroot)->root;
+    display_node(root);
 }
 
 /************************************************************************/
@@ -522,19 +518,8 @@ node_pointer start_new_tree(int key,PMEMoid value)
 /*
  *tree_insert--the abstract interface for user to use to insert a key/value
  */
-void tree_insert(char * popname,int key,void *value,size_t len)
+void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
 {
-    PMEMobjpool * pop = pmemobj_open(popname,POBJ_LAYOUT_NAME(example));
-    if(pop==NULL)
-    {
-        pop = pmemobj_create(popname,POBJ_LAYOUT_NAME(example),PMEMOBJ_MIN_POOL,0666);
-        if(pop==NULL)
-        {
-            perror("CREATION FAILED");
-            exit(EXIT_FAILURE);
-        }
-        tree_init(pop);
-    }
     PMEMoid v = find_value(pop,key);
     if(!OID_IS_NULL(v))
     {
@@ -570,7 +555,6 @@ void tree_insert(char * popname,int key,void *value,size_t len)
         }
         TX_END
     }
-    pmemobj_close(pop);
 }
 //Deletion
 /*
