@@ -160,6 +160,10 @@ static void print_rank(char *buf,node_pointer root,int height)
 }
 static char* print_declare(node_pointer root)
 {
+    if(TOID_IS_NULL(root)){
+        perror("The tree is empty!\n");
+        exit(EXIT_FAILURE);
+    }
     char *buf = (char*)malloc(sizeof(char)*MAX_BUFFER_SIZE);
     if(buf==NULL)
     {
@@ -238,9 +242,12 @@ void display(PMEMobjpool *pop){
     display_node(root);
 }
 
+
+
 /************************************************************************/
 /******************************insert part****************************************/
-int debug = 0;
+
+
 /*
  *make_record--return a PMEMoid point to value
  */
@@ -551,11 +558,19 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
         }
         TX_ONCOMMIT
         {
-            printf("insert successfully!\n");
+            printf("key %d insert successfully!\n",key);
         }
         TX_END
     }
 }
+
+
+
+/******************************************************************/
+/**************************delete part*************************************/
+
+
+
 //Deletion
 /*
  *get_neighbor_index--get_neighbor_index--find the index of pointer left to n
@@ -581,19 +596,19 @@ node_pointer adjust_root(node_pointer root)
     {
         TOID_ASSIGN(new_root,D_RO(root)->pointers[0]);
         TX_SET(new_root,parent,TOID_NULL(struct tree_node));
-        return new_root;
     }
     else
     {
         new_root = TOID_NULL(struct tree_node);
-    }
+    }TX_FREE(root);
+    return new_root;
 }
 /*
  *delete_entry--delete entry from node n
  */
 node_pointer remove_entry_from_node(node_pointer n,int key)
 {
-    int index = binary_search(n,key);
+    int index = binary_search_exact(n,key);
     for(int i = index+1; i < D_RO(n)->num_keys; i++)
     {
         TX_SET(n,keys[i-1],D_RO(n)->keys[i]);
@@ -613,6 +628,7 @@ node_pointer remove_entry_from_node(node_pointer n,int key)
 /*
  *coalesce_nodes--after deletion,the num keys of n is too few,so has to collapse with his neighbor
  *neighbor is the left neighbor of n
+ *return root
  */
 node_pointer coalesce_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime)
 {
@@ -639,7 +655,7 @@ node_pointer coalesce_nodes(node_pointer root,node_pointer n,node_pointer neighb
             TOID_ASSIGN(temp,D_RO(neighbor)->pointers[i+1]);
             TX_SET(temp,parent,neighbor);
         }
-        TX_SET(neighbor,num_keys,D_RO(n)->num_keys+D_RO(neighbor)->num_keys);
+        TX_SET(neighbor,num_keys,D_RO(n)->num_keys+D_RO(neighbor)->num_keys+1);
     }
     else
     {
@@ -684,6 +700,7 @@ node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer ne
         }
         else
         {
+
             for(int i = 1; i < D_RO(neighbor)->num_keys; i++)
             {
                 TX_SET(neighbor,keys[i-1],D_RO(neighbor)->keys[i]);
@@ -697,7 +714,7 @@ node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer ne
     {
         if(!D_RO(n)->is_leaf)
         {
-            for(int i = D_RO(n)->num_keys-1; i>=0; i++)
+            for(int i = D_RO(n)->num_keys-1; i>=0; i--)
             {
                 TX_SET(n,keys[i+1],D_RO(n)->keys[i]);
                 TX_SET(n,pointers[i+2],D_RO(n)->pointers[i+1]);
@@ -713,12 +730,12 @@ node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer ne
         }
         else
         {
-            for(int i = D_RO(n)->num_keys-1; i>=0; i++)
+            for(int i = D_RO(n)->num_keys-1; i>=0; i--)
             {
                 TX_SET(n,keys[i+1],D_RO(n)->keys[i]);
                 TX_SET(n,pointers[i+1],D_RO(n)->pointers[i]);
             }
-            TX_SET(n,keys[0],D_RO(neighbor)->keys[D_RO(n)->num_keys-1]);
+            TX_SET(n,keys[0],D_RO(neighbor)->keys[D_RO(neighbor)->num_keys-1]);
             TX_SET(n,pointers[0],D_RO(neighbor)->pointers[D_RO(n)->num_keys-1]);
             TX_SET(D_RW(n)->parent,keys[k_prime_index],D_RO(n)->keys[0]);
             TX_SET(n,num_keys,D_RO(n)->num_keys+1);
@@ -729,6 +746,7 @@ node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer ne
 }
 /*
  *delete_entry--delete key and its corresponding value from n
+ *return root
  */
 node_pointer delete_entry(node_pointer root,node_pointer n,int key)
 {
@@ -760,14 +778,14 @@ void tree_delete(PMEMobjpool *pop,int key)
 {
     TOID(struct tree) myroot = POBJ_ROOT(pop,struct tree);
     node_pointer root = D_RO(myroot)->root;
-    node_pointer leaf = find_leaf(root,key);
-    if(TOID_IS_NULL(leaf))
+    PMEMoid value = find_value(pop,key);
+    if(OID_IS_NULL(value))
     {
         return;
     }
     TX_BEGIN(pop)
     {
-        TX_SET(myroot,root,delete_entry(root,leaf,key));
+        TX_SET(myroot,root,delete_entry(root,find_leaf(root,key),key));
     }
     TX_END
 }
