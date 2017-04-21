@@ -1,10 +1,249 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "btree.h"
+
+/*************************************************************************/
+/******************************display part****************************************/
+#define MAX_HEIGHT 15
+#define MAX_BUFFER_SIZE 10000
+static int start_index[MAX_HEIGHT];
+static int layout_count[MAX_HEIGHT];
+static void init_start_index(int h)
+{
+    for(int i = 0; i < h; i++)
+    {
+        start_index[i] = 0;
+    }
+}
+static int get_height(node_pointer root)
+{
+    int i = 1;
+    while(!D_RO(root)->is_leaf)
+    {
+        i++;
+        TOID_ASSIGN(root,D_RO(root)->pointers[0]);
+    }
+    return i;
+}
+static int get_leaf_num(node_pointer root)
+{
+    while(!D_RO(root)->is_leaf)
+    {
+        TOID_ASSIGN(root,D_RO(root)->pointers[0]);
+    }
+    int i = 0;
+    while(!OID_IS_NULL(D_RO(root)->pointers[BTREE_ORDER]))
+    {
+        TOID_ASSIGN(root,D_RO(root)->pointers[BTREE_ORDER]);
+        i++;
+    }
+    return i;
+}
+static void declare_node(char *buf,node_pointer n,int layout,int leaf_sum)
+{
+    int index = 0;
+    strcat(buf,"node");
+    index = strlen(buf);
+    sprintf(buf+index,"%d_%d[shape=record, style=filled, ",layout,start_index[layout]);
+    if(D_RO(n)->is_leaf)
+    {
+        strcat(buf,"fillcolor=green, ");
+    }
+    else
+    {
+        strcat(buf,"fillcolor=yellow, ");
+    }
+    strcat(buf,"label=\"");
+    index = strlen(buf);
+    start_index[layout]++;
+    if(D_RO(n)->is_leaf)
+    {
+        for(int i = 0; i < D_RO(n)->num_keys; i++)
+        {
+            index = strlen(buf);
+            sprintf(buf+index,"%d",D_RO(n)->keys[i]);
+            if(i<D_RO(n)->num_keys-1)
+            {
+                strcat(buf,"|");
+            }
+        }
+        strcat(buf,"\"];\n");
+    }
+    else
+    {
+        for(int i = 0; i < D_RO(n)->num_keys; i++)
+        {
+            index = strlen(buf);
+            sprintf(buf+index,"<f%d>|%d|",i,D_RO(n)->keys[i]);
+        }
+        index = strlen(buf);
+        sprintf(buf+index,"<f%d>\"];\n",D_RO(n)->num_keys);
+        for(int i = 0; i <= D_RO(n)->num_keys; i++)
+        {
+            node_pointer temp = TOID_NULL(struct tree_node);
+            TOID_ASSIGN(temp,D_RO(n)->pointers[i]);
+            declare_node(buf,temp,layout+1,leaf_sum);
+        }
+    }
+}
+static int print_edge(char *buf,node_pointer n,int layout,int parent,int f,int leaf_num)
+{
+    int edges = 0;
+    int index = 0;
+    if(layout)  //n is not root
+    {
+        index = strlen(buf);
+        sprintf(buf+index,"node%d_%d:f%d -> node%d_%d;\n",layout-1,parent,f,layout,start_index[layout]);
+        edges += 1;
+    }
+    if(D_RO(n)->is_leaf)
+    {
+        //printf("in a leaf,start_index is %d layout is %d\n",start_index[layout],layout);
+        if(start_index[layout] < leaf_num)
+        {
+            index = strlen(buf);
+            sprintf(buf+index,"node%d_%d -> node%d_%d;\n",layout,start_index[layout],layout,start_index[layout]+1);
+            start_index[layout]++;
+            edges++;
+        }
+        return edges;
+    }
+    for(int i = 0; i <= D_RO(n)->num_keys; i++)
+    {
+        node_pointer temp;
+        TOID_ASSIGN(temp,D_RO(n)->pointers[i]);
+        edges += print_edge(buf,temp,layout+1,start_index[layout],i,leaf_num);
+    }
+    start_index[layout]++;
+    return edges;
+}
+static void init_layout_count()
+{
+    for(int i = 0; i < MAX_HEIGHT; i++)
+    {
+        layout_count[i] = 0;
+    }
+}
+
+static void print_rank_r(node_pointer n,int layout)
+{
+    layout_count[layout]++;
+    if(D_RO(n)->is_leaf)
+    {
+        return;
+    }
+    for(int i = 0; i <= D_RO(n)->num_keys; i++)
+    {
+        node_pointer temp;
+        TOID_ASSIGN(temp,D_RO(n)->pointers[i]);
+        print_rank_r(temp,layout+1);
+    }
+}
+static void print_rank(char *buf,node_pointer root,int height)
+{
+    init_layout_count();
+    print_rank_r(root,0);
+    for(int i = 0; i< height; i++)
+    {
+        strcat(buf,"{ rank=same; ");
+        int index;
+        for(int j=0; j<layout_count[i]; j++)
+        {
+            index = strlen(buf);
+            sprintf(buf+index," \"node%d_%d\";",i,j);
+        }
+        strcat(buf,"}\n");
+    }
+}
+static char* print_declare(PMEMobjpool *pop)
+{
+    TOID(struct tree) t = POBJ_ROOT(pop,struct tree);
+    node_pointer root = D_RO(t)->root;
+    char *buf = (char*)malloc(sizeof(char)*MAX_BUFFER_SIZE);
+    if(buf==NULL)
+    {
+        perror("MALLOC FAILED");
+        exit(EXIT_FAILURE);
+    }
+    buf[0] = '\0';
+    strcat(buf,"digraph structs {\n node[shape=record];ranksep=0.8;\nsplines=false;\n");
+    int height = get_height(root),leaf_sum = get_leaf_num(root);
+    init_start_index(height);
+    declare_node(buf,root,0,leaf_sum);
+    init_start_index(height);
+    print_rank(buf,root,0);
+    init_start_index(height);
+    print_edge(buf,root,0,-1,-1,leaf_sum);
+    print_rank(buf,root,height);
+    strcat(buf,"}\n");
+    int length = strlen(buf)+1;
+    //printf("buf length = %d\n",length);
+    return buf;
+}
+void display(PMEMobjpool *pop)
+{
+    char * buf = print_declare(pop);
+    FILE * fp = fopen("display.dot","w");
+    fwrite(buf,strlen(buf)+1,sizeof(char),fp);
+    fclose(fp);
+    free(buf);
+    pid_t child;
+    child = fork();
+    if(child < 0)
+    {
+        perror("FORK FAILED");
+        exit(EXIT_FAILURE);
+    }
+    if(child==0)
+    {
+        execlp("dot","dot","-Tjpg","display.dot","-o","display.jpg",(char *)0);
+    }
+    else
+    {
+        wait(NULL);
+        //execlp("rm","rm","display.dot",(char*)0);
+        child = fork();
+        if(child < 0)
+        {
+            perror("FORK FAILED");
+            exit(EXIT_FAILURE);
+        }
+        if(child==0)
+        {
+            execlp("rm","rm","display.dot",(char*)0);
+        }
+        else
+        {
+            wait(NULL);
+            child = fork();
+            if(child < 0)
+            {
+                perror("FORK FAILED");
+                exit(EXIT_FAILURE);
+            }
+            if(child==0)
+            {
+                execlp("eog","eog","display.jpg",(char*)0);
+            }
+            else
+            {
+                wait(NULL);
+            }
+        }
+    }
+}
+
+/************************************************************************/
+/******************************insert part****************************************/
 int debug = 0;
 /*
  *make_record--return a PMEMoid point to value
  */
-PMEMoid make_record(void *value,size_t len){
+PMEMoid make_record(void *value,size_t len)
+{
     PMEMoid temp = pmemobj_tx_alloc(len,TOID_TYPE_NUM(void));
     TX_MEMCPY(pmemobj_direct(temp),value,len);
     return temp;
@@ -24,7 +263,7 @@ void tree_init(PMEMobjpool*pop)
 /*
  *binary_search_exact--return index of key in the keys,if not exists,return -1
  */
- int binary_search_exact(node_pointer n,int key)
+int binary_search_exact(node_pointer n,int key)
 {
     int left = 0,right = D_RO(n)->num_keys - 1;
     while(left<=right)
@@ -48,7 +287,7 @@ void tree_init(PMEMobjpool*pop)
 /*
  *binary_search--return the index of pointers,which may include the key
  */
- int binary_search(node_pointer n,int key)
+int binary_search(node_pointer n,int key)
 {
 
     int left = 0,right = D_RO(n)->num_keys - 1;
@@ -70,7 +309,7 @@ void tree_init(PMEMobjpool*pop)
 /*
  *find_leaf--return the leaf which may contain the key
  */
- node_pointer find_leaf(node_pointer root,int key)
+node_pointer find_leaf(node_pointer root,int key)
 {
     node_pointer c = root;
     if(TOID_IS_NULL(c))
@@ -92,7 +331,8 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
     TOID(struct tree) myroot = POBJ_ROOT(pop,struct tree);
     node_pointer root = D_RO(myroot)->root;
     node_pointer leaf = find_leaf(root,key);
-    if(TOID_IS_NULL(leaf)){
+    if(TOID_IS_NULL(leaf))
+    {
         return OID_NULL;
     }
     int index = binary_search_exact(leaf,key);
@@ -102,18 +342,22 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *make_node--return TOID(struct tree_node) point to a new allocated node
  */
- node_pointer make_node()
+node_pointer make_node()
 {
     node_pointer n = TX_NEW(struct tree_node);
     TX_SET(n,is_leaf,FALSE);
     TX_SET(n,num_keys,0);
     TX_SET(n,parent,TOID_NULL(struct tree_node));
+    for(int i = 0; i <= BTREE_ORDER; i++)
+    {
+        TX_SET(n,pointers[i],OID_NULL);
+    }
     return n;
 }
 /*
  *make_leaf--same as make_node except return a pointer pointing to leaf
  */
- node_pointer make_leaf()
+node_pointer make_leaf()
 {
     node_pointer leaf = make_node();
     TX_SET(leaf,is_leaf,TRUE);
@@ -123,7 +367,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *insert_into_leaf--insert key/value to leaf then return leaf,in this situation the leaf don't need to split
  */
- node_pointer insert_into_leaf( node_pointer leaf,int key,PMEMoid value)
+node_pointer insert_into_leaf( node_pointer leaf,int key,PMEMoid value)
 {
     int index = binary_search(leaf,key);
     for(int i = D_RO(leaf)->num_keys-1; i >= index; --i)
@@ -139,14 +383,14 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *cut--get the index where to split
  */
- int cut(int length)
+int cut(int length)
 {
     return (length%2==0)?(length/2):(length/2+1);
 }
 /*
  *insert_into_leaf_after_splitting--insert key/value to leaf then cause the leaf splitting
  */
- node_pointer insert_into_leaf_after_splitting( node_pointer root,node_pointer leaf,int key,PMEMoid value)
+node_pointer insert_into_leaf_after_splitting( node_pointer root,node_pointer leaf,int key,PMEMoid value)
 {
     node_pointer new_leaf;
     new_leaf = make_leaf();
@@ -174,7 +418,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *insert_into_node--sample as insert_into_leaf,but not to a leaf instead of a interval node
  */
- node_pointer insert_into_node(node_pointer root,node_pointer n,int key,node_pointer child)
+node_pointer insert_into_node(node_pointer root,node_pointer n,int key,node_pointer child)
 {
     int index = binary_search(n,key);
     for(int i = D_RO(n)->num_keys-1; i >= index; --i)
@@ -191,7 +435,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *insert_into_node_after_splitting--sample as insert_into_leaf_after_splitting,but not to a leaf instead of a interval node
  */
- node_pointer insert_into_node_after_splitting(node_pointer root,node_pointer n,int key,node_pointer child)
+node_pointer insert_into_node_after_splitting(node_pointer root,node_pointer n,int key,node_pointer child)
 {
     node_pointer new_n = make_node(),temp;
     int split_index = cut(BTREE_ORDER),index = binary_search(n,key);
@@ -223,7 +467,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
  *insert_into_parent--insert a new child to parent
  *return root
  */
- node_pointer insert_into_parent(node_pointer root,node_pointer left,int key,node_pointer right)
+node_pointer insert_into_parent(node_pointer root,node_pointer left,int key,node_pointer right)
 {
     node_pointer parent = D_RO(left)->parent;
     if(TOID_IS_NULL(parent))
@@ -247,7 +491,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *insert_into_new_root--build a new root contains two children
  */
- node_pointer insert_into_new_root(node_pointer left,int key,node_pointer right)
+node_pointer insert_into_new_root(node_pointer left,int key,node_pointer right)
 {
     node_pointer root = make_node();
     TX_SET(root,num_keys,1);
@@ -261,7 +505,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *start_new_tree--build a leaf as root
  */
- node_pointer start_new_tree(int key,PMEMoid value)
+node_pointer start_new_tree(int key,PMEMoid value)
 {
     node_pointer root = make_leaf();
     TX_SET(root,keys[0],key);
@@ -272,45 +516,64 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 /*
  *tree_insert--the abstract interface for user to use to insert a key/value
  */
-void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
+void tree_insert(char * popname,int key,void *value,size_t len)
 {
-    if(!OID_IS_NULL(find_value(pop,key)))
+    PMEMobjpool * pop = pmemobj_open(popname,POBJ_LAYOUT_NAME(example));
+    if(pop==NULL)
     {
-        printf("the key has already inserted!\n");
-        return;
-    }
-    TOID(struct tree) myroot = POBJ_ROOT(pop,struct tree);
-    node_pointer root = D_RO(myroot)->root;
-    TX_BEGIN(pop)
-    {
-        PMEMoid pvalue = make_record(value,len);
-        if(TOID_IS_NULL(root))
+        pop = pmemobj_create("treefile",POBJ_LAYOUT_NAME(example),PMEMOBJ_MIN_POOL,0666);
+        if(pop==NULL)
         {
-            TX_SET(myroot,root,start_new_tree(key,pvalue));
+            perror("CREATION FAILED");
+            exit(EXIT_FAILURE);
         }
-        else
+        tree_init(pop);
+    }
+    printf("key %d,",key);
+    PMEMoid v = find_value(pop,key);
+    if(!OID_IS_NULL(v))
+    {
+        printf("the key has already inserted,value is %d!\n",*((int *)pmemobj_direct(v)));
+    }
+    else
+    {
+        TOID(struct tree) myroot = POBJ_ROOT(pop,struct tree);
+        node_pointer root = D_RO(myroot)->root;
+        TX_BEGIN(pop)
         {
-            node_pointer leaf = find_leaf(root,key);
-            if(D_RO(leaf)->num_keys < BTREE_ORDER)
+            PMEMoid pvalue = make_record(value,len);
+            if(TOID_IS_NULL(root))
             {
-                insert_into_leaf(leaf,key,pvalue);
+                TX_SET(myroot,root,start_new_tree(key,pvalue));
             }
             else
             {
-                TX_SET(myroot,root,insert_into_leaf_after_splitting(root,leaf,key,pvalue));
+                node_pointer leaf = find_leaf(root,key);
+                if(D_RO(leaf)->num_keys < BTREE_ORDER)
+                {
+                    insert_into_leaf(leaf,key,pvalue);
+                }
+                else
+                {
+                    TX_SET(myroot,root,insert_into_leaf_after_splitting(root,leaf,key,pvalue));
+                }
             }
         }
-    }TX_ONCOMMIT{
-        printf("insert successfully!\n");
+        TX_ONCOMMIT
+        {
+            printf("insert successfully!\n");
+        }
+        TX_END
     }
-    TX_END
+    display(pop);
+    pmemobj_close(pop);
 }
 //Deletion
 /*
  *get_neighbor_index--get_neighbor_index--find the index of pointer left to n
  *if n is the leftest,return -1
  */
- int get_neighbor_index(node_pointer n)
+int get_neighbor_index(node_pointer n)
 {
     node_pointer parent = D_RO(n)->parent;
     return binary_search(parent,D_RO(n)->keys[0]) - 1;
@@ -319,7 +582,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
  *adjust_root--To maintain the balance of B+Tree after deletion,
  *we have to adjust root
  */
- node_pointer adjust_root(node_pointer root)
+node_pointer adjust_root(node_pointer root)
 {
     if(D_RO(root)->num_keys>0)
     {
@@ -340,7 +603,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
 /*
  *delete_entry--delete entry from node n
  */
- node_pointer remove_entry_from_node(node_pointer n,int key)
+node_pointer remove_entry_from_node(node_pointer n,int key)
 {
     int index = binary_search(n,key);
     for(int i = index+1; i < D_RO(n)->num_keys; i++)
@@ -363,7 +626,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
  *coalesce_nodes--after deletion,the num keys of n is too few,so has to collapse with his neighbor
  *neighbor is the left neighbor of n
  */
- node_pointer coalesce_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime)
+node_pointer coalesce_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime)
 {
     /*
      *case n is the leftmost child then swap it with its neighbor
@@ -407,7 +670,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
 /*
  *redistribute--borrow a k_v pair from neighbor
  */
- node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime,int k_prime_index)
+node_pointer redistribute_nodes(node_pointer root,node_pointer n,node_pointer neighbor,int neighbor_index,int k_prime,int k_prime_index)
 {
     /*
      *case the n is leftest node of parent,than borrow a k_v from right neighbor
@@ -479,7 +742,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
 /*
  *delete_entry--delete key and its corresponding value from n
  */
- node_pointer delete_entry(node_pointer root,node_pointer n,int key)
+node_pointer delete_entry(node_pointer root,node_pointer n,int key)
 {
     n = remove_entry_from_node(n,key);
     if(TOID_EQUALS(n,root))
@@ -523,7 +786,7 @@ void tree_delete(PMEMobjpool *pop,int key)
 /*
  *destroy_node--destory node
  */
- void destroy_tree_nodes(node_pointer root)
+void destroy_tree_nodes(node_pointer root)
 {
     node_pointer temp = TOID_NULL(struct tree_node);
     if(!D_RO(root)->is_leaf)
@@ -552,5 +815,6 @@ void destroy_tree(PMEMobjpool *pop)
     {
         destroy_tree_nodes(root);
         TX_SET(myroot,root,TOID_NULL(struct tree_node));
-    }TX_END
+    }
+    TX_END
 }
