@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "btree.h"
-int debug = 1;
+int debug = 0;
 /*
  *make_record--return a PMEMoid point to value
  */
@@ -117,7 +117,7 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
 {
     node_pointer leaf = make_node();
     TX_SET(leaf,is_leaf,TRUE);
-    TX_SET(leaf,pointers[BTREE_ORDER-1],OID_NULL);
+    TX_SET(leaf,pointers[BTREE_ORDER],OID_NULL);
     return leaf;
 }
 /*
@@ -125,9 +125,6 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
  */
  node_pointer insert_into_leaf( node_pointer leaf,int key,PMEMoid value)
 {
-    if(debug){
-        printf(" key %d is insert into leaf,leaf has %d keys\n",key,D_RO(leaf)->num_keys+1);
-    }
     int index = binary_search(leaf,key);
     for(int i = D_RO(leaf)->num_keys-1; i >= index; --i)
     {
@@ -151,13 +148,9 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
  */
  node_pointer insert_into_leaf_after_splitting( node_pointer root,node_pointer leaf,int key,PMEMoid value)
 {
-    if(debug){
-        printf(" key %d is insert into leaf,cause splitting,leaf has %d keys\n",key,D_RO(leaf)->num_keys+1);
-    }
     node_pointer new_leaf;
     new_leaf = make_leaf();
     int split_index = cut(BTREE_ORDER),index = binary_search(leaf,key);
-    printf("split index = %d ",split_index);
     for(int i = 0,j = split_index; j < D_RO(leaf)->num_keys; j++,i++)
     {
         TX_SET(new_leaf,keys[i],D_RO(leaf)->keys[j]);
@@ -165,20 +158,18 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
     }
     int new_leaf_index = D_RO(leaf)->num_keys-split_index;
     TX_SET(leaf,num_keys,split_index);
-    printf("split index = %d ",split_index);
     TX_SET(new_leaf,num_keys,new_leaf_index);
-    printf("new leaf has %d keys\n",D_RO(new_leaf)->num_keys);
     if(index<split_index)
     {
-        insert_into_leaf(leaf,key,value);
+        leaf = insert_into_leaf(leaf,key,value);
     }
     else
     {
-        insert_into_leaf(new_leaf,key,value);
+        new_leaf = insert_into_leaf(new_leaf,key,value);
     }
-    TX_SET(new_leaf,pointers[BTREE_ORDER-1],D_RO(leaf)->pointers[BTREE_ORDER-1]);
-    TX_SET(leaf,pointers[BTREE_ORDER-1],leaf.oid);
-    return insert_into_parent(root,leaf,key,new_leaf);
+    TX_SET(new_leaf,pointers[BTREE_ORDER],D_RO(leaf)->pointers[BTREE_ORDER]);
+    TX_SET(leaf,pointers[BTREE_ORDER],new_leaf.oid);
+    return insert_into_parent(root,leaf,D_RO(new_leaf)->keys[0],new_leaf);
 }
 /*
  *insert_into_node--sample as insert_into_leaf,but not to a leaf instead of a interval node
@@ -213,7 +204,6 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
         TX_SET(temp,parent,new_n);
     }
     int new_n_index = D_RO(n)->num_keys-split_index-1;
-    printf(" new n has %d keys\n",new_n_index);
     TX_SET(new_n,pointers[0],D_RO(n)->pointers[split_index+1]);
     TX_SET(n,num_keys,split_index);
     TX_SET(new_n,num_keys,new_n_index);
@@ -259,9 +249,9 @@ PMEMoid find_value(PMEMobjpool *pop,int key)
  */
  node_pointer insert_into_new_root(node_pointer left,int key,node_pointer right)
 {
-    printf("now in insert into new root key is %d\n",key);
     node_pointer root = make_node();
     TX_SET(root,num_keys,1);
+    TX_SET(root,keys[0],key);
     TX_SET(root,pointers[0],left.oid);
     TX_SET(root,pointers[1],right.oid);
     TX_SET(left,parent,root);
@@ -286,6 +276,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
 {
     if(!OID_IS_NULL(find_value(pop,key)))
     {
+        printf("the key has already inserted!\n");
         return;
     }
     TOID(struct tree) myroot = POBJ_ROOT(pop,struct tree);
@@ -309,12 +300,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
                 TX_SET(myroot,root,insert_into_leaf_after_splitting(root,leaf,key,pvalue));
             }
         }
-    }TX_ONABORT{
-        printf("ABORT\n");
-    }TX_ONCOMMIT{
-        printf("commit!\n");
-    }
-    TX_END
+    }TX_END
 }
 //Deletion
 /*
