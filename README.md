@@ -5,16 +5,19 @@
 * 描述：c语言实现基于NVM Library的B+tree。实现B+树的建立、销毁、插入、删除、查找等动作。
 
 项目结构
-├── Btree
-│   ├── btree.c
-│   ├── btree.h
-│   ├── display.c
-│   ├── makefile
-│   ├── reader.c
-│   └── writer.c
-└── README.md
+ ├── Btree
+ │   ├── btree.c
+ │   ├── btree.h
+ │   ├── display.c
+ │   ├── makefile
+ │   ├── reader.c
+ │   └── writer.c
+ └── README.md
 
-展示树需要:[graphviz](http://www.graphviz.org/),eog
+
+展示树需要:[graphviz](http://www.graphviz.org/)和eog
+
+
 安装eog
 ```shell
 	sudo apt install eog;
