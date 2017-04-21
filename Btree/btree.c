@@ -300,7 +300,10 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
                 TX_SET(myroot,root,insert_into_leaf_after_splitting(root,leaf,key,pvalue));
             }
         }
-    }TX_END
+    }TX_ONCOMMIT{
+        printf("insert successfully!\n");
+    }
+    TX_END
 }
 //Deletion
 /*
