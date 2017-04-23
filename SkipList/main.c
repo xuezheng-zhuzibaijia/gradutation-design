@@ -37,7 +37,7 @@ int main(int argc,char**argv)
         {
         case 'h':
             printf("Usage:\n");
-            printf("-d key        delete key from  \n");
+            printf("-d key        delete key from  skip_list\n");
             printf("-i key:value  insert k/v pair into skip list\n");
             printf("-r key        read the value of the key from skip list\n");
             printf("-s            show the skip list in a picture if tree is not empty,else note empty\n");
@@ -99,9 +99,7 @@ int main(int argc,char**argv)
             printf("UNKNOWN OPTION\n");
             break;
         }
-    }
-    if(pop!=NULL)
-    {
+    }if(pop!=NULL){
         pmemobj_close(pop);
     }
     return 0;

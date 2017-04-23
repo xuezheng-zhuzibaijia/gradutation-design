@@ -30,5 +30,6 @@ PMEMoid skiplist_find_value(PMEMobjpool *pop,int key);
 void skiplist_remove(PMEMobjpool *pop,int key);
 void skiplist_insert(PMEMobjpool *pop,int key,void *value,size_t len);
 void skiplist_destroy(PMEMobjpool *pop);
+void printf_skiplist(PMEMobjpool *pop);
 void display(PMEMobjpool *pop);
 #endif // SKIP_LIST_H_INCLUDED

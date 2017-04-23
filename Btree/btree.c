@@ -182,6 +182,10 @@ static char* print_declare(node_pointer root)
     print_rank(buf,root,height);
     strcat(buf,"}\n");
     int length = strlen(buf)+1;
+    if(length > MAX_BUFFER_SIZE){
+        perror("MAX_BUFFER_SIZE is too small");
+        exit(EXIT_FAILURE);
+    }
     return buf;
 }
 static void display_node(node_pointer root)

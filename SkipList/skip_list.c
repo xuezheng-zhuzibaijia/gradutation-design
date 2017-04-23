@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "skip_list.h"
-#define MAX_BUF_SIZE 2000
+#define MAX_BUF_SIZE 10000
 static snode_pointer make_node(int key,void * value,size_t len)
 {
     PMEMoid v = pmemobj_tx_alloc(len,TOID_TYPE_NUM(void));
@@ -35,12 +38,13 @@ int skiplist_is_in(PMEMobjpool *pop,int key)
 {
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
     int level = D_RO(root)->head.level;
+    for(;level >=0&&(TOID_IS_NULL(D_RO(root)->head.next[level])||(D_RO(D_RO(root)->head.next[level])->key > key));level--);
     if(level < 0)
     {
         return 0;
     }
     snode_pointer temp = D_RO(root)->head.next[level];
-    while(level>=0 && (!TOID_IS_NULL(temp)))
+    while(level>=0)
     {
         int temp_key = D_RO(temp)->key;
         if(temp_key==key)
@@ -98,14 +102,20 @@ PMEMoid skiplist_find_value(PMEMobjpool *pop,int key)
 static void skiplist_remove_level(snode_pointer n,int key,int level)
 {
     snode_pointer temp = n;
-    for(; D_RO(D_RO(temp)->next[level])->key!=key; temp=D_RO(temp)->next[level]);
+    for(;(!TOID_IS_NULL(D_RO(temp)->next[level]))&&D_RO(D_RO(temp)->next[level])->key<key; temp=D_RO(temp)->next[level]);
+    if(TOID_IS_NULL(D_RO(temp)->next[level])){
+        skiplist_remove_level(temp,key,level-1);
+        return;
+    }
     snode_pointer dnode = D_RO(temp)->next[level];
+    printf("dnode key is %d\n",D_RO(dnode)->key);
     TX_SET(temp,next[level],D_RO(dnode)->next[level]);
     if(level>0)
     {
         skiplist_remove_level(temp,key,level-1);
+    }else{
+        TX_FREE(dnode);
     }
-    TX_FREE(dnode);
 }
 void skiplist_remove(PMEMobjpool *pop,int key)
 {
@@ -113,16 +123,28 @@ void skiplist_remove(PMEMobjpool *pop,int key)
     {
         printf("key %d is not in skip list\n",key);
         return;
-    }
+    }//printf("here!\n");
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
+    int level = D_RO(root)->head.level;
+    for(;level >=0&&(TOID_IS_NULL(D_RO(root)->head.next[level])||(D_RO(D_RO(root)->head.next[level])->key > key));level--);
+    if(level < 0)
+    {
+        return;
+    }
     TX_BEGIN(pop)
     {
 
+        snode_pointer head = TOID_NULL(struct snode);
+        TOID_ASSIGN(head,pmemobj_oid(&(D_RO(root)->head)));
+        skiplist_remove_level(head,key,level);
+
+    }
+    TX_END
+    TX_BEGIN(pop){
         int level = D_RO(root)->head.level;
-        skiplist_remove_level(D_RO(root)->head.next[level],key,level);
         for(int i = level; i >= 0; i--)
         {
-            if(TOID_IS_NULL(D_RO(root)->head.next[level]))
+            if(TOID_IS_NULL(D_RO(root)->head.next[i]))
             {
                 TX_SET(root,head.level,i-1);
             }
@@ -131,8 +153,7 @@ void skiplist_remove(PMEMobjpool *pop,int key)
                 break;
             }
         }
-    }
-    TX_END
+    }TX_END
 }
 
 static void skiplist_insert_level(snode_pointer n,int key,snode_pointer inode,int level)
@@ -195,84 +216,121 @@ void skiplist_destroy(PMEMobjpool *pop)
     }
     TX_END
 }
+
 void display(PMEMobjpool *pop)
 {
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
     if(D_RO(root)->head.level < 0)
     {
         printf("skip_list is empty\n");
+        return;
     }
-    char buf[MAX_BUF_SIZE];
-    char * bufp = buf;
-    buf[0] = '\0';
-    /****************************/
-    /***********start***************/
+    char *graph = (char *)malloc(MAX_BUF_SIZE);
+    graph[0] = '\0';
     int levelcount[SKIP_MAX_HEIGHT];
-    memset(levelcount,0,sizeof(int)*SKIP_MAX_HEIGHT);
+    for(int i=0;i<=D_RO(root)->head.level;i++){
+        levelcount[i] = 0;
+    }
     int num_count = 0;
-    strcat(buf,"digraph structs {\n node[shape=record];ranksep=0.8;\nsplines=false;\n");
-    strcat(buf,"node0[shape=record,style=filled,fillcolor = sapphire,label=\"");
+    strcat(graph,"digraph structs {\n node[shape=record];rankdir=LR;ranksep=0.8;\nsplines=false;\n");
+    strcat(graph,"node0[shape=record,style=filled,fillcolor=aquamarine,label=\"");
     int index;
     for(int i = D_RO(root)->head.level; i>=0; i--)
     {
-        bufp += strlen(bufp);
-        sprintf(bufp,"<f%d> ",i);
+        sprintf(graph+strlen(graph),"<f%d> ",i);
         if(i>0)
         {
-            strcat(bufp,"|");
+            strcat(graph,"|");
         }
     }
-    strcat(bufp,"\"];\n");
+    strcat(graph,"\"];\n");
     snode_pointer np = D_RO(root)->head.next[0];
     while(!TOID_IS_NULL(np))
     {
         num_count++;
-        bufp += strlen(bufp);
-        sprintf(bufp,"node%d[shape=record,label=\"",num_count);
+        sprintf(graph+strlen(graph),"node%d[shape=record,label=\"",num_count);
         int level = D_RO(np)->level;
         for(int i = level; i>=0; i--)
         {
-            bufp += strlen(bufp);
-            sprintf(bufp,"{ %d | <f%d> }",D_RO(np)->key,i);
+            sprintf(graph+strlen(graph),"{ <b%d> %d|<f%d> }",i,D_RO(np)->key,i);
             if(i > 0)
             {
-                strcat(bufp,"|");
+                strcat(graph,"|");
             }
         }
-        strcat(bufp,"\"];\n");
+        strcat(graph,"\"];\n");
         np = D_RO(np)->next[0];
     }
-    bufp += strlen(bufp);
-    sprintf(bufp,"node%d[shape = record,style=filled,fillcolor = yellow,label=\"",num_count);
+    num_count++;
+    sprintf(graph+strlen(graph),"node%d[shape = record,style=filled,fillcolor = yellow,label=\"",num_count);
     for(int i = D_RO(root)->head.level; i>=0; i--)
     {
-        bufp += strlen(bufp);
-        sprintf(bufp,"{<f%d>NULL}",i);
+        sprintf(graph+strlen(graph),"{<f%d>NULL}",i);
         if(i > 0)
         {
-            strcat(bufp,"|");
+            strcat(graph,"|");
         }
     }
-    strcat(bufp,"\"];\n");
-    np = D_RO(root)->head.next[0];
+    strcat(graph,"\"];\n");
     num_count = 0;
-    while(!TOID_IS_NULL(np))
-    {
+    for(np = D_RO(root)->head.next[0];!TOID_IS_NULL(np);np = D_RO(np)->next[0]){
         num_count++;
         int level = D_RO(np)->level;
         for(int i = level; i >= 0; i--)
         {
-            bufp += strlen(bufp);
-            sprintf(bufp,"node%d:f%d -> node%d;\n",levelcount[i],i,num_count);
+            int length = strlen(graph);
+            sprintf(graph+length,"node%d:f%d -> node%d:b%d;\n",levelcount[i],i,num_count,i);
             levelcount[i] = num_count;
         }
     }
+    num_count++;
     for(int i = D_RO(root)->head.level; i>=0; i--)
     {
-        bufp += strlen(bufp);
-        sprintf(bufp,"node%d:f%d -> node%d;\n",levelcount[i],i,num_count);
+        sprintf(graph+strlen(graph),"node%d:f%d -> node%d:f%d;\n",levelcount[i],i,num_count,i);
     }
-    strcat(bufp,"}\n");
-    printf("%s",buf);
+    strcat(graph,"}\n");
+    if(strlen(graph) >= MAX_BUF_SIZE){
+        perror("The MAX_BUF_SIZE is smaller than required");
+        exit(EXIT_FAILURE);
+    }
+    FILE * fp=fopen("display.dot","w");
+    fprintf(fp,"%s",graph);
+    fclose(fp);
+    free(graph);
+    pid_t child = fork();
+    if(child < 0){
+        perror("create subprocess failed!\n");
+        exit(EXIT_FAILURE);
+    }if(child==0){
+        execlp("dot","dot","-Tjpg","display.dot","-o","display.jpg",(char*)0);
+    }wait(NULL);
+    child = fork();
+    if(child < 0){
+        perror("create subprocess failed!\n");
+        exit(EXIT_FAILURE);
+    }if(child==0){
+        execlp("rm","rm","display.dot",(char*)0);
+    }wait(NULL);
+    child = fork();
+    if(child < 0){
+        perror("create subprocess failed!\n");
+        exit(EXIT_FAILURE);
+    }if(child==0){
+        execlp("eog","eog","display.jpg",(char*)0);
+    }wait(NULL);
+}
+
+static void print_skiplist_level(snode_pointer n,int level){
+    printf("level %3d head -> ",level);
+    while(!TOID_IS_NULL(n)){
+        printf("%3d -> ",D_RO(n)->key);
+        n = D_RO(n)->next[level];
+    }printf("NULL\n");
+}
+void printf_skiplist(PMEMobjpool *pop){
+    sroot_pointer root = POBJ_ROOT(pop,struct sroot);
+    for(int i = D_RO(root)->head.level;i>=0;i--){
+        print_skiplist_level(D_RO(root)->head.next[i],i);
+    }
 }
 
