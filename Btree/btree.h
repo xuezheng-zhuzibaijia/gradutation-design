@@ -7,7 +7,7 @@
 #ifndef BTREE_TYPE_OFFSET
 #define BTREE_TYPE_OFFSET 1012
 #endif
-#define BTREE_ORDER 8
+#define BTREE_ORDER 4
 #define BTREE_MIN (BTREE_ORDER / 2)
 #define TRUE  1
 #define FALSE 0

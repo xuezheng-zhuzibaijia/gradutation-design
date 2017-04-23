@@ -8,7 +8,7 @@
 /*************************************************************************/
 /******************************display part****************************************/
 #define MAX_HEIGHT 15
-#define MAX_BUFFER_SIZE 10000
+#define MAX_BUFFER_SIZE 200000
 static int start_index[MAX_HEIGHT];
 static int layout_count[MAX_HEIGHT];
 static void init_start_index(int h)
@@ -171,7 +171,7 @@ static char* print_declare(node_pointer root)
         exit(EXIT_FAILURE);
     }
     buf[0] = '\0';
-    strcat(buf,"digraph structs {\n node[shape=record];ranksep=0.8;\nsplines=false;\n");
+    strcat(buf,"digraph structs {\n node[shape=record];ranksep=1.5;\nsplines=false;\n");
     int height = get_height(root),leaf_sum = get_leaf_num(root);
     init_start_index(height);
     declare_node(buf,root,0,leaf_sum);
