@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include "skip_list.h"
-#define MAX_BUF_SIZE 10000
+#define MAX_BUF_SIZE 100000
 static snode_pointer make_node(int key,void * value,size_t len)
 {
     PMEMoid v = pmemobj_tx_alloc(len,TOID_TYPE_NUM(void));
@@ -38,9 +38,16 @@ int skiplist_is_in(PMEMobjpool *pop,int key)
 {
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
     int level = D_RO(root)->head.level;
-    for(;level >=0&&(TOID_IS_NULL(D_RO(root)->head.next[level])||(D_RO(D_RO(root)->head.next[level])->key > key));level--);
-    if(level < 0)
-    {
+    if(level < 0){
+        return 0;
+    }
+    while(level>=0){
+        if(TOID_IS_NULL(D_RO(root)->head.next[level]) || D_RO(D_RO(root)->head.next[level])->key > key){
+            level--;
+        }else{
+            break;
+        }
+    }if(level < 0){
         return 0;
     }
     snode_pointer temp = D_RO(root)->head.next[level];
@@ -55,7 +62,7 @@ int skiplist_is_in(PMEMobjpool *pop,int key)
         {
             return 0;
         }
-        if(TOID_IS_NULL(D_RO(temp)->next[level]))
+        if(TOID_IS_NULL(D_RO(temp)->next[level]) || D_RO(D_RO(temp)->next[level])->key > key)
         {
             level--;
         }
@@ -75,26 +82,26 @@ PMEMoid skiplist_find_value(PMEMobjpool *pop,int key)
     {
         return OID_NULL;
     }
+    for(;level >=0&&(TOID_IS_NULL(D_RO(root)->head.next[level])||(D_RO(D_RO(root)->head.next[level])->key > key));level--);
+    if(level < 0)
+    {
+        return OID_NULL;
+    }
     snode_pointer temp = D_RO(root)->head.next[level];
-    while(level>=0 && (!TOID_IS_NULL(temp)))
+    while(level>=0)
     {
         int temp_key = D_RO(temp)->key;
         if(temp_key==key)
         {
             return D_RO(temp)->value;
         }
-        if(TOID_IS_NULL(D_RO(temp)->next[level]))
+        if(TOID_IS_NULL(D_RO(temp)->next[level])||(D_RO(D_RO(temp)->next[level])->key > key))
         {
             level--;
-            continue;
-        }
-        if(temp_key < key)
-        {
-            temp = D_RO(temp)->next[level];
         }
         else
         {
-            return OID_NULL;
+            temp = D_RO(temp)->next[level];
         }
     }
     return OID_NULL;
@@ -126,7 +133,6 @@ void skiplist_remove(PMEMobjpool *pop,int key)
     }//printf("here!\n");
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
     int level = D_RO(root)->head.level;
-    for(;level >=0&&(TOID_IS_NULL(D_RO(root)->head.next[level])||(D_RO(D_RO(root)->head.next[level])->key > key));level--);
     if(level < 0)
     {
         return;
@@ -134,14 +140,21 @@ void skiplist_remove(PMEMobjpool *pop,int key)
     TX_BEGIN(pop)
     {
 
-        snode_pointer head = TOID_NULL(struct snode);
-        TOID_ASSIGN(head,pmemobj_oid(&(D_RO(root)->head)));
-        skiplist_remove_level(head,key,level);
-
-    }
-    TX_END
-    TX_BEGIN(pop){
-        int level = D_RO(root)->head.level;
+        for(int i = level;i>=0;i--){
+            if(!TOID_IS_NULL(D_RO(root)->head.next[i])){
+                snode_pointer temp = D_RO(root)->head.next[i];
+                if(D_RO(temp)->key < key){
+                    skiplist_remove_level(temp,key,i);
+                    break;
+                }else if(D_RO(temp)->key==key){
+                    TX_SET(root,head.next[i],D_RO(temp)->next[i]);
+                    if(i==0){
+                        TX_FREE(temp);
+                    }
+                }
+            }
+        }
+        level = D_RO(root)->head.level;
         for(int i = level; i >= 0; i--)
         {
             if(TOID_IS_NULL(D_RO(root)->head.next[i]))
@@ -189,15 +202,18 @@ void skiplist_insert(PMEMobjpool *pop,int key,void *value,size_t len)
             {
                 TX_SET(root,head.next[i],TOID_NULL(struct snode));
             }
+        }for(int i = new_level;i>=0;i--){
+            if(TOID_IS_NULL(D_RO(root)->head.next[i]) || D_RO(D_RO(root)->head.next[i])->key > key){
+                TX_SET(newnode,next[i],D_RO(root)->head.next[i]);
+                TX_SET(root,head.next[i],newnode);
+            }else{
+                skiplist_insert_level(D_RO(root)->head.next[i],key,newnode,i);
+                break;
+            }
         }
-        snode_pointer head = TOID_NULL(struct snode);
-        TOID_ASSIGN(head,pmemobj_oid(&(D_RO(root)->head)));
-        if(TOID_IS_NULL(head))
-        {
-            perror("oid transform failed\n");
-            exit(EXIT_FAILURE);
-        }
-        skiplist_insert_level(head,key,newnode,new_level);
+    }
+    TX_ONCOMMIT{
+        printf("key %d insert successfully!\n",key);
     }
     TX_END
 }
@@ -232,7 +248,7 @@ void display(PMEMobjpool *pop)
         levelcount[i] = 0;
     }
     int num_count = 0;
-    strcat(graph,"digraph structs {\n node[shape=record];rankdir=LR;ranksep=0.8;\nsplines=false;\n");
+    strcat(graph,"digraph structs {\n node[shape=record];rankdir=LR;ranksep=0.4;\nsplines=false;\n");
     strcat(graph,"node0[shape=record,style=filled,fillcolor=aquamarine,label=\"");
     int index;
     for(int i = D_RO(root)->head.level; i>=0; i--)
@@ -302,7 +318,7 @@ void display(PMEMobjpool *pop)
         perror("create subprocess failed!\n");
         exit(EXIT_FAILURE);
     }if(child==0){
-        execlp("dot","dot","-Tjpg","display.dot","-o","display.jpg",(char*)0);
+        execlp("dot","dot","-Tpng","display.dot","-o","display.png",(char*)0);
     }wait(NULL);
     child = fork();
     if(child < 0){
@@ -316,7 +332,7 @@ void display(PMEMobjpool *pop)
         perror("create subprocess failed!\n");
         exit(EXIT_FAILURE);
     }if(child==0){
-        execlp("eog","eog","display.jpg",(char*)0);
+        execlp("eog","eog","display.png",(char*)0);
     }wait(NULL);
 }
 

@@ -16,14 +16,14 @@ int main(int argc,char**argv)
         }
         skiplist_init(pop);
 
-    }
-    for(int i = 20; i >= 0; i--)
+    }int write_times = atoi(argv[1]);
+    clock_t start = clock();
+    for(int i = 0; i < write_times; i++)
     {
-        int key = (int)(10000.0*rand()/(RAND_MAX+1.0));
-        tree_insert(pop,key,(void *)&i,sizeof(int));
-    }
-    display(pop);
-    pmemobj_close(pop);
+        skiplist_insert(pop,i,(void*)&i,sizeof(int));
+    }clock_t end = clock();
+    printf("%d,%f\n",write_times,(double)(end-start)/CLOCKS_PER_SEC);
+    //display(pop);
     if(pop!=NULL)
     {
         pmemobj_close(pop);

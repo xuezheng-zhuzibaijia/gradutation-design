@@ -11,6 +11,7 @@ void read_value(PMEMobjpool *pop,int key)
     if(OID_IS_NULL(value))
     {
         printf("NOT FOUND\n");
+        return;
     }
     printf("key = %d,value = %d\n",key,*((int *)pmemobj_direct(value)));
 }
@@ -31,7 +32,7 @@ int main(int argc,char**argv)
     PMEMobjpool * pop = pmemobj_open(fname,POBJ_LAYOUT_NAME(example));
     char ch;
     int colon_index;
-    while((ch=getopt(argc,argv,"i:r:d:sh"))!=-1)
+    while((ch=getopt(argc,argv,"i:r:d:shp"))!=-1)
     {
         switch(ch)
         {
@@ -42,6 +43,7 @@ int main(int argc,char**argv)
             printf("-r key        read the value of the key from skip list\n");
             printf("-s            show the skip list in a picture if tree is not empty,else note empty\n");
             printf("-h            print this information\n");
+printf("-p            print this tree\n");
             break;
         case 'i':
             if(pop==NULL)
@@ -95,11 +97,22 @@ int main(int argc,char**argv)
                 skiplist_remove(pop,atoi(optarg));
             }
             break;
+	case 'p':
+	    if(pop==NULL)
+            {
+                printf("OPEN FAILED\n");
+            }
+            else
+            {
+                printf_skiplist(pop);
+            }
+            break;
         case '?':
             printf("UNKNOWN OPTION\n");
             break;
         }
-    }if(pop!=NULL){
+    }
+    if(pop){
         pmemobj_close(pop);
     }
     return 0;

@@ -2,14 +2,15 @@
 #include <stdlib.h>
 #include <libpmemobj.h>
 #include "btree.h"
-const int * get_value(PMEMobjpool *pop,int key)
+void get_value(PMEMobjpool *pop,int key)
 {
     PMEMoid value = find_value(pop,key);
     if(OID_IS_NULL(value))
     {
-        return NULL;
+        printf("NOT FOUND");
+	return;
     }
-    return (int *)pmemobj_direct(value);
+    printf("key %d value %d\n",key,*((int *)pmemobj_direct(value)));
 }
 int main(int argc,char**argv)
 {
@@ -21,18 +22,16 @@ int main(int argc,char**argv)
     PMEMobjpool * pop = pmemobj_open("treefile",POBJ_LAYOUT_NAME(example));
     if(pop==NULL)
     {
+	exit(EXIT_FAILURE);
     }
     //print_tree(pop);
     int key = atoi(argv[1]);
-    const int * value = get_value(pop,key);
-    if(value==NULL)
-    {
-        printf("NOT found!\n");
+    clock_t start = clock();
+    for(int i = 0;i < key;i++){
+       get_value(pop,i);
     }
-    else
-    {
-        printf("key is %d,value is %d\n",key,*value);
-    }
+    clock_t end = clock();
+    printf("%d,%f",key,(double)(end-start)/CLOCKS_PER_SEC);
     pmemobj_close(pop);
     return 0;
 }
