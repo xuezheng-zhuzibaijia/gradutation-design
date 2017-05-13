@@ -10,18 +10,18 @@
 #ifndef BTREE_TYPE_OFFSET
 #define BTREE_TYPE_OFFSET 1012
 #endif
-
+typedef int key_t;
 /******************************avl tree**********************************************/
 typedef struct avl_node avl_pointer;
 struct avl_node
 {
-    int key;
+    key_t key;
     short int bf;
     avl_pointer left_child,right_child;
 };
 struct key_set
 {
-    int * key_list;
+    key_t * key_list;
     int num;
 };
 int unbalanced;
@@ -29,29 +29,23 @@ avl_pointer avl_tree_root;
 //function declaration
 void avl_init();
 void avl_destroy(avl_pointer * parent);
-void avl_insert(avl_pointer *parent,int key,int *unbalanced);
+void avl_insert(avl_pointer *parent,key_t key,int *unbalanced);
 struct key_set * get_interval_keyset(int i,int j);
-
 
 
 /**********************tree declaration*******************************/
 TOID_DECLARE(struct tree_node,BTREE_TYPE_OFFSET);
 TOID_DECLARE(struct tree,BTREE_TYPE_OFFSET+1);
 TOID_DECLARE(void,BTREE_TYPE_OFFSET+2);
-enum dmark {NORMAL,DELETED,HEAD,TAIL};
-struct leaf_arg
-{
-    int id[BTREE_ORDER];
-    enum dmark mask;
-
-};
+enum dmark {NORMAL,DELETED};
 struct tree_node
 {
-    int keys[BTREE_ORDER];
+    key_t keys[BTREE_ORDER];
     PMEMoid pointers[BTREE_ORDER+1];
     int num_keys;
     int is_leaf;
-    struct leaf_arg * arg; //This part　is volitile,and it‘s only used in leaf node
+    enum dmark mask;
+    size_t value_size[BTREE_ORDER];
     TOID(struct tree_node) parent;
 };
 struct tree
@@ -59,48 +53,60 @@ struct tree
     TOID(struct tree_node) root;
 };
 typedef TOID(struct tree_node) node_pointer;
+node_pointer leftest_leaf;
+
+
+/*
+  *PALM related
+  */
 #ifndef MAX_LIST_SIZE
 #define MAX_LIST_SIZE 100
 #endif // MAX_LIST_SIZE
 
 
-typedef enum OP {IN,DEL,RD,UP,RANGE} optype;
-typedef struct {int i,j;} int_pair;
-typedef struct {int key;void * value;size_t length;} kv_pair;
+typedef enum OP {INSERT,DELETE,READ,UPSERT,RANGE} optype;
+typedef struct {key_t i,j;} key_pair;
+typedef struct {key_t key;void * value;size_t value_size;} kv_pair;
 /**************input structure declaration**************/
 struct operation
 {
+     node_pointer n;
     int id;
     optype op;
-    union {
-        int_pair interval;
-        kv_pair in_up;
-        int key;
+    key_t key; //delete read
+    union{
+        PMEMoid child; //delete child from parent
+        kv_pair interval; //insert upate
+       void (*update)(void *);
     }arg;
-};
-struct operation operation_lst[MAX_LIST_SIZE];
+}operation_lst[MAX_LIST_SIZE];
 int operation_lst_count;
 
 struct range_op{
-    int_pair interval;
-    struct key_set * kset;
+    key_pair interval;
+    int read_num;
     int id_from;
 };
 struct range_op  range_set[MAX_LIST_SIZE];
 int range_set_count;
 
-
+struct new_key_record{
+      key_t key;
+      int id;
+}record_list[MAX_LIST_SIZE];
+int record_list_count;
 /********************task declartion********************/
 struct key_op{
+        int id;
         optype op;
-        int key;
-        union{
-              PMEMoid value;
-              void (*update)(PMEMoid value);
-        }
+        key_t key; //delete/read
+        PMEMoid child;
+        size_t value_size;
+        void * value;
+        void (*update)(void *);
 };
 struct node_opset{
-       node_pointer node;
+       node_pointer n;
        struct key_op * key_op_set;
        int opcount;
 };
@@ -109,23 +115,14 @@ struct task{
     int nodecount;
 };
 
-
-/********************modified list declaration***********/
-struct modified_op{
-     optype op;
-     int key;
-     PMEMoid value;
-     void (*update)(PMEMoid value);
-     node_pointer n;
-};
-struct modified_op modified_list[MAX_LIST_SIZE];
-int modified_count;
+struct task task_list[MAX_LIST_SIZE];
+int task_list_count;
 
 
 /********************result declaration******************/
 struct {
     int id;
-    int key;
+    key_t key;
     void * value;
 }read_result[MAX_LIST_SIZE*10];
 int read_result_count;
@@ -138,8 +135,7 @@ struct op_result
         kv_pair read_result;
         struct
         {
-            int i,j;
-            int * key;
+            key_t * key;
             void * value;
             int num;
         } range_result;
