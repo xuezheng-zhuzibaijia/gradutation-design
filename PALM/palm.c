@@ -26,12 +26,35 @@ static int btree_search(node_pointer n,int key)
     }
     return left;
 }
-node_pointer find_leaf(node_pointer root,int key){
+static int btree_search_exact(node_pointer n,int key)
+{
+    int left = 0,right = D_RO(n)->num_keys - 1;
+    while(left<=right)
+    {
+        int mid = (left+right)/2;
+        if(D_RO(n)->keys[mid]==key)
+        {
+            return mid;
+        }
+        if(D_RO(n)->keys[mid]>key)
+        {
+            right = mid-1;
+        }
+        else
+        {
+            left = mid+1;
+        }
+    }
+    return -1;
+}
+
+static node_pointer find_leaf(node_pointer root,int key){
         node_pointer temp = root;
         while(!D_RO(temp)->is_leaf){
                 TOID_ASSIGN(temp,D_RO(temp)->pointers[btree_search(temp,key)]);
         }return temp;
 }
+
 void preprocess(){
         if(operation_lst_count==0){
             perror("OPERATION LIST IS EMPTY");
