@@ -1,39 +1,22 @@
 #ifndef PALM_H_INCLUDED
 #define PALM_H_INCLUDED
 
+#include <libpmemobj.h>  //compile command would be 'cc -std=gnu99　... -lpmemobj -lpmem'
+#include "basetype.h"
+#include "avl.h"
 #define BTREE_ORDER 8
 #define BTREE_MIN (BTREE_ORDER / 2)
-
-#define TRUE  1
-#define FALSE 0
-#include <libpmemobj.h>  //compile command would be 'cc -std=gnu99　... -lpmemobj -lpmem'
 #ifndef BTREE_TYPE_OFFSET
 #define BTREE_TYPE_OFFSET 1012
 #endif
-typedef int key_t;
+//typedef int key_t;
 /******************************avl tree**********************************************/
-typedef struct avl_node avl_pointer;
-struct avl_node
-{
-    key_t key;
-    short int bf;
-    avl_pointer left_child,right_child;
-};
-struct key_set
-{
-    key_t * key_list;
-    int num;
-};
-int unbalanced;
-avl_pointer avl_tree_root;
 //function declaration
 void avl_init();
 void avl_destroy(avl_pointer * parent);
-void avl_insert(avl_pointer *parent,key_t key,int *unbalanced);
-struct key_set * get_interval_keyset(int i,int j);
+void avl_insert(avl_pointer *parent,void * newdata,size_t data_size,int *unbalanced,int(*compare)(void * data,void * newdata),void (*update)(void *data,void *newdata));
 
-
-/**********************tree declaration*******************************/
+struct data_set * get_avl_dataset(int(*contain)(void *data));
 TOID_DECLARE(struct tree_node,BTREE_TYPE_OFFSET);
 TOID_DECLARE(struct tree,BTREE_TYPE_OFFSET+1);
 TOID_DECLARE(void,BTREE_TYPE_OFFSET+2);
@@ -123,6 +106,7 @@ int task_list_count;
 struct {
     int id;
     key_t key;
+    size_t value_size;
     void * value;
 }read_result[MAX_LIST_SIZE*10];
 int read_result_count;
@@ -141,8 +125,8 @@ struct op_result
         } range_result;
     }
 };
-struct op_result[MAX_LIST_SIZE];
-int op_result_count;
+struct op_result  result_list[MAX_LIST_SIZE];
+int result_list_count;
 
 
 #endif // PALM_H_INCLUDED

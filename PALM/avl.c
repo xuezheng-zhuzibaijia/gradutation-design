@@ -1,13 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "palm.h"
+#include <string.h>
+#include "avl.h"
 /**
  * avl.c是用于支持PALM树预处理的数据结构以及相关操作
  *
  */
-void avl_init(){
-    unbalanced = FALSE;
-    avl_tree_root = NULL;
+
+void avl_init(avl_pointer *avl_root,int *unbalanced)
+{
+        *avl_root = NULL;
+        *unbalanced = FALSE;
 }
 static void left_rotation(avl_pointer * parent,int *unbalanced)
 {
@@ -82,77 +85,130 @@ static void right_rotation(avl_pointer * parent,int *unbalanced)
     }(*parent)->bf = 0;
     *unbalanced = 0;
 }
-void avl_insert(avl_pointer *parent,int key,int *unbalanced){
-     if(!(*parent)){
-            *unbalanced = TRUE;
-            *parent = (avl_pointer)malloc(sizeof(struct avl_node));
-            if((*parent)==NULL){
-                perror("AVL MALLOC ERROR");
-                exit(-1);
+/**
+ *                            { -1  a  <  b
+ *compare(a,b) = -{   0  a == b
+ *                            {   1  a  >  b
+ */
+void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanced,
+int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata))
+{
+    if(!(*parent))
+    {
+        *unbalanced = TRUE;
+        *parent = (avl_pointer)malloc(sizeof(struct avl_node));
+        if((*parent)==NULL)
+        {
+            perror("AVL NODE MALLOC FAILED");
+            exit(-1);
+        }
+        (*parent)->bf = 0;
+        (*parent)->left_child = (*parent)->right_child = NULL;
+        if(((*parent)->data=(void*)malloc(sizeof(void)*data_size))==NULL){
+            free(*parent);
+            perror("AVL DATA MALLOC FAILED");
+            exit(-1);
+        }memcpy((*parent)->data,newdata,data_size);
+    }
+    else if(compare((*parent)->data,newdata)==1) //node value larger than newdata
+    {
+        avl_insert(&((*parent)->left_child),newdata,data_size,unbalanced,compare,update);
+        if(*unbalanced)
+        {
+            switch((*parent)->bf)
+            {
+            case 1:
+                left_rotation(parent,unbalanced);
+                break;
+            case 0:
+                (*parent)->bf = 1;
+                break;
+            case -1:
+                (*parent)->bf = 0;
+                *unbalanced = FALSE;
+                break;
             }
-            (*parent)->bf = 0;
-            (*parent)->left_child = (*parent)->right_child = NULL;
-            (*parent)->key = key;
-     }else if(key < (*parent)->key){
-            avl_insert(&((*parent)->left_child),key,unbalanced);
-            if(*unbalanced){
-                switch((*parent)->bf){
-                    case 1:left_rotation(parent,unbalanced);break;
-                    case 0:(*parent)->bf = 1;break;
-                    case -1:(*parent)->bf = 0;*unbalanced = FALSE;break;
-                }
+        }
+    }
+    else if(compare((*parent)->data,newdata)==-1)
+    {
+        avl_insert(&((*parent)->right_child),newdata,data_size,unbalanced,compare,update);
+        if(*unbalanced)
+        {
+            switch((*parent)->bf)
+            {
+            case 1:
+                (*parent)->bf = 0;
+                *unbalanced = FALSE;
+                break;
+            case 0:
+                (*parent)->bf = 1;
+                break;
+            case -1:
+                right_rotation(parent,unbalanced);
+                break;
             }
-     }else if(key > (*parent)->key){
-          avl_insert(&((*parent)->right_child),key,unbalanced);
-          if(*unbalanced){
-                    switch((*parent)->bf){
-                        case 1:(*parent)->bf = 0;*unbalanced = FALSE;break;
-                        case 0:(*parent)->bf = 1;break;
-                        case -1:right_rotation(parent,unbalanced);break;
-                    }
-          }
-     }else{
-            *unbalanced = FALSE;
-     }
+        }
+    }
+    else
+    {
+        if(update!=NULL)
+        {
+            update((*parent)->data,newdata);
+        }
+        *unbalanced = FALSE;
+    }
 }
 
-void avl_destroy(avl_pointer * parent){
+void avl_destroy(avl_pointer * parent)
+{
     if(!(*parent)) return;
     avl_destroy(&((*parent)->left_child));
     avl_destroy(&((*parent)->right_child));
+    free((*parent)->data);
     free(*parent);
     *parent = NULL;
 }
-static int get_interval_keysum(avl_pointer parent,int i,int j){
+/**
+   *avl_nodenum(interval)--get the num of nodes data of which satisfied function 'contain'
+   */
+static int avl_nodenum(avl_pointer parent,contain_func contain,void *c)
+{
     if(parent==NULL) return 0;
-    int tmp = parent->key <= j && parent->key >= i;
-    if(i < parent->key){ tmp += get_interval_keysum(parent->left_child,i,j);}
-    if(parent->key < j){ tmp += get_interval_keysum(parent->right_child,i,j);}
-    return tmp;
+    return contain(parent->data,c) +avl_nodenum(parent->left_child,contain,c) + avl_nodenum(parent->right_child,contain,c);
 }
-void static collect_interval(struct key_set * result,avl_pointer parent,int i,int j){
+void static collect_interval(struct data_list * result,avl_pointer parent,contain_func contain,void *c)
+{
     if(parent==NULL) return;
-    if(i < parent->key){ collect_interval(result,parent->left_child,i,j);}
-    if(parent->key <= j && parent->key >= i){
-        result->key_list[result->num++] = parent->key;
-    }if(parent->key < j){ collect_interval(result,parent->right_child,i,j);}
+    collect_interval(result,parent->left_child,contain,c);
+    if(contain(parent->data,c)){
+            result->data[result->num++] = parent->data;
+    }
+    collect_interval(result,parent->right_child,contain,c);
 }
-struct key_set * get_interval_keyset(int i,int j){
-    int sum = get_interval_keysum(avl_tree_root,i,j);
-    if(sum == 0){ return NULL;}
-    struct key_set * result = (struct key_set *)malloc(sizeof(struct key_set));
-    if(result==NULL){
-        perror("KEY SET MALLOC ERROR");
+
+struct data_list * avl_print(avl_pointer avl_root,contain_func contain,void *c)
+{
+    int num = avl_nodenum(avl_root,contain,c);
+    if(num == 0)  //no node satisfied the 'contain' function
+    {
+        return NULL;
+    }
+    struct data_list * result = (struct data_list *)malloc(sizeof(struct data_list));
+    if(result==NULL)
+    {
+        perror("DATA LIST MALLOC FAILED");
         exit(-1);
     }
-    int * key_list = (int *)malloc(sizeof(int)*sum);
-    if(key_list==NULL){
-         perror("KEY LIST MALLOC ERROR");
-         exit(-1);
+    void ** temp = (void **)malloc(sizeof(void*)*num);
+    if(temp==NULL)
+    {
+        perror("DATA MALLOC FAILED");
+        exit(-1);
     }
     result -> num = 0;
-    result->key_list = key_list;
-    collect_interval(result,avl_tree_root,i,j);
+    result->data = temp;
+    collect_interval(result,avl_root,contain,c);
     return result;
 }
 
