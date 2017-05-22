@@ -7,11 +7,11 @@ struct test_struct
     int key;
     int value;
 };
-int contain(void *data,void *c)
+static int contain(void *data,void *c)
 {
     return 1;
 }
-int compare(void *data,void *newdata)
+static int compare(void *data,void *newdata)
 {
     struct test_struct * a,*b;
     a  = (struct test_struct *)data;
@@ -26,14 +26,14 @@ int compare(void *data,void *newdata)
     }
     return 1;
 }
-void update(void *data,void *newdata)
+static void update(void *data,void *newdata)
 {
     struct test_struct * a,*b;
     a  = (struct test_struct *)data;
     b = (struct test_struct *)newdata;
     a->value = b->value;
 }
-void usage()
+static void usage()
 {
     printf("This is a test program for avl tree\n");
 }
