@@ -14,7 +14,7 @@ typedef int key_t;
 typedef TOID(struct tree_node) node_pointer;
 struct leaf_arg{
      int is_deleted;
-     size_t  vsize[BTREE_ORDER];
+     size_t  vsizes[BTREE_ORDER];
 };
 struct tree_node
 {
@@ -67,6 +67,7 @@ struct {
         int id;
         key_t key;
 }change_record[MAX_LIST_SIZE];
+
 int change_record_count;
 kvpair * read_record[MAX_LIST_SIZE];
 int read_record_count;
@@ -74,5 +75,7 @@ int read_record_count;
 node_pointer make_node();
 node_pointer make_leaf();
 void btree_init(TOID(struct tree) t);
+void leaf_operation(struct leafop * p);
+void node_operation(struct nodeop *p);
 
 #endif // BTREE_H_INCLUDED

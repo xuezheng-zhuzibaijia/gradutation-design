@@ -206,7 +206,7 @@ static void node_delete(struct parentop p,key_t *keys,PMEMoid *children,int *len
     }(*length)--;
 }
 
-void leaf_operation(struct leafop * p)
+void leaf_operation(struct leafop * p,node_pointer root)
 {
     node_pointer leaf = p->n;
     key_t * keys;
@@ -234,7 +234,7 @@ void leaf_operation(struct leafop * p)
     int length = D_RO(leaf)->num_keys;
     memcpy(keys,D_RO(leaf)->keys,sizeof(key_t)*length);
     memcpy(values,D_RO(leaf)->pointers,sizeof(PMEMoid)*length);
-    memcpy(vsizes,D_RO(D_RO(leaf)->arg)->vsize,sizeof(size_t)*length);
+    memcpy(vsizes,D_RO(D_RO(leaf)->arg)->vsizes,sizeof(size_t)*length);
     for(int i = 0; i < p->num; i++)
     {
         switch(p->op_list[i].op)
@@ -258,70 +258,95 @@ void leaf_operation(struct leafop * p)
     }
     //split or underflow
     TX_ADD(D_RO(leaf)->arg);
-    if(length <= BTREE_ORDER){
-            if(length < BTREE_MIN){
-                    D_RW(D_RW(leaf)->arg)->is_deleted = TRUE;
+    if(length <= BTREE_ORDER)
+    {
+        if(length < BTREE_MIN && !TOID_ASSIGN(root,leaf))
+        {
+            D_RW(D_RW(leaf)->arg)->is_deleted = TRUE;
+        }
+        D_RW(leaf)->num_keys = length;
+        memcpy(D_RO(leaf)->keys,keys,sizeof(key_t)*length);
+        memcpy(D_RO(leaf)->pointers,values,sizeof(PMEMoid)*length);
+        memcpy(D_RO(D_RO(leaf)->arg)->vsize,vsizes,sizeof(size_t)*length);
+    }
+    else
+    {
+        PMEMoid tail = D_RO(leaf)->pointers[BTREE_ORDER];
+        node_pointer sibling = leaf;
+        D_RO(leaf)->num_keys = BTREE_MIN;
+        memcpy(D_RO(leaf)->keys,keys,sizeof(key_t)*BTREE_MIN);
+        memcpy(D_RO(leaf)->pointers,values,sizeof(PMEMoid)*BTREE_MIN);
+        memcpy(D_RO(D_RO(leaf)->arg)->vsize,vsizes,sizeof(size_t)*BTREE_MIN);
+        int base = BTREE_ORDER;
+        int tmp_count;
+        while(length - base > BTREE_ORDER)
+        {
+            node_pointer tmp = make_leaf();
+            D_RW(tmp)->num_keys = BTREE_MIN;
+            memcpy(D_RO(tmp)->keys,keys+base,sizeof(key_t)*BTREE_MIN);
+            memcpy(D_RO(tmp)->pointers,values+base,sizeof(PMEMoid)*BTREE_MIN);
+            memcpy(D_RO(D_RO(tmp)->arg)->vsize,vsizes+base,sizeof(size_t)*BTREE_MIN);
+            do
+            {
+                tmp_count = modified_list_count;
             }
-            D_RW(leaf)->num_keys = length;
-            memcpy(D_RO(leaf)->keys,keys,sizeof(key_t)*length);
-            memcpy(D_RO(leaf)->pointers,values,sizeof(PMEMoid)*length);
-            memcpy(D_RO(D_RO(leaf)->arg)->vsize,vsizes,sizeof(size_t)*length);
-    }else {
-            PMEMoid tail = D_RO(leaf)->pointers[BTREE_ORDER];
-            node_pointer sibling = leaf;
-            D_RO(leaf)->num_keys = BTREE_MIN;
-            TX_MEMCPY(D_RO(leaf)->keys,keys,sizeof(key_t)*BTREE_MIN);
-            TX_MEMCPY(D_RO(leaf)->pointers,values,sizeof(PMEMoid)*BTREE_MIN);
-            TX_MEMCPY(D_RO(D_RO(leaf)->arg)->vsize,vsizes,sizeof(size_t)*BTREE_MIN);
-            int base = BTREE_ORDER;
-            int tmp_count;
-            while(length - base > BTREE_ORDER){
-                    node_pointer tmp = make_leaf();
-                    D_RW(tmp)->num_keys = BTREE_MIN;
-                    memcpy(D_RO(tmp)->keys,keys+base,sizeof(key_t)*BTREE_MIN);
-                    memcpy(D_RO(tmp)->pointers,values+base,sizeof(PMEMoid)*BTREE_MIN);
-                    memcpy(D_RO(D_RO(tmp)->arg)->vsize,vsizes+base,sizeof(size_t)*BTREE_MIN);
-                    do{
-                            tmp_count = modified_list_count;
-                    }while(!__sync_compare_and_swap(&modified_list_count,tmp_count,tmp_count+1));
-                    modified_list[tmp_count].op = INSERT;
-                    modified_list[tmp_count].child = tmp.oid;
-                    modified_list[tmp_count].key = D_RO(tmp)->keys[0];
-                    targets[tmp_count] = tmp;
-                    D_RW(sibling)->pointers[BTREE_ORDER] = tmp.oid;
-                    sibling = tmp;
-                    base += BTREE_MIN;
-            }node_pointer tmp = make_leaf();
-              D_RW(tmp)->num_keys = length-base;
-              memcpy(D_RO(tmp)->keys,keys+base,sizeof(key_t)*(length-base));
-              memcpy(D_RO(tmp)->pointers,values+base,sizeof(PMEMoid)*(length-base));
-              memcpy(D_RO(D_RO(tmp)->arg)->vsize,vsizes+base,sizeof(size_t)*(length-base));
-              do{
-                    tmp_count = modified_list_count;
-              }while(!__sync_compare_and_swap(&modified_list_count,tmp_count,tmp_count+1));
-              modified_list[tmp_count].op = INSERT;
-              modified_list[tmp_count].child = tmp.oid;
-              modified_list[tmp_count].key = D_RO(tmp)->keys[0];
-              targets[tmp_count] = tmp;
-              D_RW(sibling)->pointers[BTREE_ORDER] = tmp.oid;
-              D_RW(tmp)->pointers[BTREE_ORDER] = tail;
+            while(!__sync_compare_and_swap(&modified_list_count,tmp_count,tmp_count+1));
+            modified_list[tmp_count].op = INSERT;
+            modified_list[tmp_count].child = tmp.oid;
+            modified_list[tmp_count].key = D_RO(tmp)->keys[0];
+            targets[tmp_count] = tmp;
+            D_RW(sibling)->pointers[BTREE_ORDER] = tmp.oid;
+            sibling = tmp;
+            base += BTREE_MIN;
+        }
+        node_pointer tmp = make_leaf();
+        D_RW(tmp)->num_keys = length-base;
+        memcpy(D_RO(tmp)->keys,keys+base,sizeof(key_t)*(length-base));
+        memcpy(D_RO(tmp)->pointers,values+base,sizeof(PMEMoid)*(length-base));
+        memcpy(D_RO(D_RO(tmp)->arg)->vsizes,vsizes+base,sizeof(size_t)*(length-base));
+        do
+        {
+            tmp_count = modified_list_count;
+        }
+        while(!__sync_compare_and_swap(&modified_list_count,tmp_count,tmp_count+1));
+        modified_list[tmp_count].op = INSERT;
+        modified_list[tmp_count].child = tmp.oid;
+        modified_list[tmp_count].key = D_RO(tmp)->keys[0];
+        targets[tmp_count] = tmp;
+        D_RW(sibling)->pointers[BTREE_ORDER] = tmp.oid;
+        D_RW(tmp)->pointers[BTREE_ORDER] = tail;
+    }
+    free(keys);
+    free(values);
+    free(vsizes);
+}
+static void destory_subtree(node_pointer n)
+{
+    if(D_RO(n)->is_leaf)
+    {
+        TX_SET(D_RW(n)->arg,is_deleted,TRUE);
+    }
+    else
+    {
+        node_pointer c;
+        for(int i = 0; i < D_RO(n)->num_keys+1; i++)
+        {
+            TOID_ASSIGN(c,D_RO(n)->pointers[i]);
+            destory_subtree(c);
+        }
+        TX_FREE(n);
     }
 }
-static void destory_subtree(node_pointer n){
-        if(D_RO(n)->is_leaf){
-                TX_SET(D_RW(n)->arg,is_deleted,TRUE);
-        }else{
-                node_pointer c;
-                for(int i = 0;i < D_RO(n)->num_keys+1;i++){
-                      TOID_ASSIGN(c,D_RO(n)->pointers[i]);
-                      destory_subtree(c);
-                }TX_FREE(n);
-        }
-}
 
-void node_operation(struct nodeop *p)
+void node_operation(struct nodeop *p,node_pointer * root)
 {
     node_pointer n = p->n;
+    //root has split,need to build a new one
+    if(TOID_IS_NULL(n))
+    {
+        n = make_node();
+        *root = n;
+    }
     key_t * keys;
     PMEMoid * children;
     if((keys=(key_t *)malloc(sizeof(key_t)*MAX_LIST_SIZE))==NULL)
@@ -353,7 +378,100 @@ void node_operation(struct nodeop *p)
             break;
         }
     }
+    int insert_index;
+    if(length <= BTREE_ORDER)
+    {
+        D_RW(n)->num_keys = length;
+        memcpy(D_RO(n)->keys,keys,sizeof(key_t)*length);
+        memcpy(D_RO(n)->pointers,children,sizeof(PMEMoid)*(length+1));
+        for(int i = 0; i < length+1; i++)
+        {
+            node_pointer c;
+            TOID_ASSIGN(c,D_RO(n)->pointers[i]);
+            D_RW(c)->parent = n;
+        }
+        if(length < BTREE_MIN)
+        {
+            if(TOID_EQUALS(*root,n))
+            {
+                    if(length  == 0){ //root is an interval node and it's  only has one child then make the root be the first child
+                            TOID_ASSIGN(*root,D_RO(n)->pointers[0]);
+                            TX_FREE(n);
+                    }
+            }
+            else
+            {
+                destory_subtree(n);
+                do
+                {
+                    insert_index = modified_list_count;
+                }
+                while(!__sync_compare_and_swap(&modified_list_count,insert_index,insert_index + 1));
+                modified_list[insert_index].child = n.oid;
+                modified_list[insert_index].op = DELETE;
+                targets[insert_index] = D_RO(n)->parent;
+            }
+        }
+    }
+    else
+    {
+        D_RW(n)->num_keys = BTREE_MIN;
+        memcpy(D_RO(n)->keys,keys,sizeof(key_t)*BTREE_MIN);
+        memcpy(D_RO(n)->pointers,children,sizeof(PMEMoid)*(BTREE_MIN+1));
+        for(int i = 0; i < BTREE_MIN+1; i++)
+        {
+            node_pointer c;
+            TOID_ASSIGN(c,D_RO(n)->pointers[i]);
+            D_RW(c)->parent = n;
+        }
+        int base = BTREE_MIN;
+        node_pointer tmp;
+        while(length-base > BTREE_ORDER)
+        {
+            tmp = make_node();
+            memcpy(D_RO(tmp)->keys,keys+base+1,sizeof(key_t)*(BTREE_MIN-1));
+            memcpy(D_RO(tmp)->pointers,children+base,sizeof(PMEMoid)*BTREE_MIN);
+            for(int i = 0; i < BTREE_MIN; i++)
+            {
+                node_pointer c;
+                TOID_ASSIGN(c,D_RO(tmp)->pointers[i]);
+                D_RW(c)->parent = n;
+            }
+            do
+            {
+                insert_index = modified_list_count;
+            }
+            while(!__sync_compare_and_swap(&modified_list_count,insert_index,insert_index + 1));
+            modified_list[insert_index].child = tmp.oid;
+            modified_list[insert_index].op = INSERT;
+            modified_list[insert_index].key = keys[k];
+            targets[insert_index] = D_RO(n)->parent;
+            base += BTREE_MIN;
+        }
+        tmp = make_node();
+        memcpy(D_RO(tmp)->keys,keys+base+1,sizeof(key_t)*(length-base-1));
+        memcpy(D_RO(tmp)->pointers,children+base,sizeof(PMEMoid)*(length-base));
+        for(int i = 0; i < length-base; i++)
+        {
+            node_pointer c;
+            TOID_ASSIGN(c,D_RO(tmp)->pointers[i]);
+            D_RW(c)->parent = n;
+        }
+        do
+        {
+            insert_index = modified_list_count;
+        }
+        while(!__sync_compare_and_swap(&modified_list_count,insert_index,insert_index + 1));
+        modified_list[insert_index].child = tmp.oid;
+        modified_list[insert_index].op = INSERT;
+        modified_list[insert_index].key = keys[k];
+        targets[insert_index] = D_RO(n)->parent;
+    }
+    free(keys);
+    free(children);
 }
+
+
 
 
 
