@@ -95,13 +95,7 @@ static void leaf_read(struct keyop  p, key_t * keys,PMEMoid * values,size_t * vs
         tmp->vsize = vsizes[index];
         tmp->id = p.id;
     }
-    int record_index;
-    do
-    {
-        record_index = read_record_count;
-    }
-    while(!__sync_compare_and_swap(&read_record_count,record_index,record_index+1));
-    read_record[record_index] = tmp;
+    read_record[p.id] = tmp;
 }
 static void leaf_update(struct keyop p,key_t *keys,PMEMoid*values,size_t *vsizes,int length)
 {
@@ -168,7 +162,7 @@ static void leaf_delete(struct keyop p,key_t* keys,PMEMoid *values,size_t*vsizes
     }
     (*length)--;
 }
-static void node_insert(struct parentop p,key_t * keys,PMEMoid *children,int* length)
+static void node_insert(struct keyop p,key_t * keys,PMEMoid *children,int* length)
 {
     int index = search_fuzzy(keys,p.key,*length);
     for(int i = (*length)-1; i>=index; i--)
@@ -180,7 +174,7 @@ static void node_insert(struct parentop p,key_t * keys,PMEMoid *children,int* le
     children[i] = p.child;
     (*length)++;
 }
-static void node_delete(struct parentop p,key_t *keys,PMEMoid *children,int *length)
+static void node_delete(struct keyop p,key_t *keys,PMEMoid *children,int *length)
 {
     int index = -1;
     for(int i = 0; i < (*length+1); i++)
@@ -206,7 +200,7 @@ static void node_delete(struct parentop p,key_t *keys,PMEMoid *children,int *len
     }(*length)--;
 }
 
-void leaf_operation(struct leafop * p,node_pointer root)
+void leaf_operation(struct nodeop * p,node_pointer root)
 {
     node_pointer leaf = p->n;
     key_t * keys;
@@ -471,8 +465,12 @@ void node_operation(struct nodeop *p,node_pointer * root)
     free(children);
 }
 
-
-
+node_pointer get_leaf(node_pointer root,key_t key){
+    node_pointer c = root;
+    while(!D_RO(c)->is_leaf){
+        TOID_ASSIGN(c,D_RO(c)->pointers[search_fuzzy(D_RO(c)->keys,key,D_RO(c)->num_keys)]);
+    }return c;
+}
 
 
 

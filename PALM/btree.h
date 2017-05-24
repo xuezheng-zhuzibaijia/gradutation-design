@@ -34,7 +34,7 @@ struct tree
 #define MAX_LIST_SIZE 100
 #endif // MAX_LIST_SIZE
 typedef struct{ key_t key;void *value;size_t vsize;int id;} kvpair;
-typedef enum {INSERT,DELETE,READ,UPDATE} optype;
+typedef enum {INSERT,DELETE,READ,UPDATE,RANGE} optype;
 struct keyop{
         optype op;
         key_t key;
@@ -42,25 +42,11 @@ struct keyop{
         size_t vsize;
         void (*update)(void *value);
         int id;
-};
-struct leafop{
-        int num;
-        struct keyop * op_list;
-        node_pointer n;
-};
-struct parentop{
-        optype op;
-        key_t key;
         PMEMoid child;
 };
-node_pointer targets[MAX_LIST_SIZE];
-
-struct parentop modified_list[MAX_LIST_SIZE];
-int modified_list_count;
-
 struct nodeop{
         int num;
-        struct parentop * op_list;
+        struct keyop * op_list;
         node_pointer n;
 };
 struct {
@@ -75,7 +61,7 @@ int read_record_count;
 node_pointer make_node();
 node_pointer make_leaf();
 void btree_init(TOID(struct tree) t);
-void leaf_operation(struct leafop * p);
-void node_operation(struct nodeop *p);
-
+void leaf_operation(struct nodeop *p,node_pointer * root);
+void node_operation(struct nodeop *p,node_pointer * root);
+node_pointer get_leaf(node_pointer root,key_t key);
 #endif // BTREE_H_INCLUDED

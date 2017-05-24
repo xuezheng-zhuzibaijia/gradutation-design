@@ -90,7 +90,7 @@ static void right_rotation(avl_pointer * parent,int *unbalanced)
  *compare(a,b) = -{   0  a == b
  *                            {   1  a  >  b
  */
-void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanced,
+void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanced,void* (*construct)(void *newdata,size_t data_size),
 int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata))
 {
     if(!(*parent))
@@ -104,15 +104,11 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
         }
         (*parent)->bf = 0;
         (*parent)->left_child = (*parent)->right_child = NULL;
-        if(((*parent)->data=(void*)malloc(sizeof(void)*data_size))==NULL){
-            free(*parent);
-            perror("AVL DATA MALLOC FAILED");
-            exit(-1);
-        }memcpy((*parent)->data,newdata,data_size);
+        (*parent)->data = construct(newdata,data_size);
     }
     else if(compare((*parent)->data,newdata)==1) //node value larger than newdata
     {
-        avl_insert(&((*parent)->left_child),newdata,data_size,unbalanced,compare,update);
+        avl_insert(&((*parent)->left_child),newdata,data_size,unbalanced,construct,compare,update);
         if(*unbalanced)
         {
             switch((*parent)->bf)
@@ -132,7 +128,7 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
     }
     else if(compare((*parent)->data,newdata)==-1)
     {
-        avl_insert(&((*parent)->right_child),newdata,data_size,unbalanced,compare,update);
+        avl_insert(&((*parent)->right_child),newdata,data_size,unbalanced,construct,compare,update);
         if(*unbalanced)
         {
             switch((*parent)->bf)
@@ -211,4 +207,22 @@ struct data_list * avl_print(avl_pointer avl_root,contain_func contain,void *c)
     collect_interval(result,avl_root,contain,c);
     return result;
 }
-
+void * data avl_read(avl_pointer avl_root,void *newdata,int (*compare)(void* data,void *newdata))
+{
+    if(avl_root==NULL){
+        return NULL;
+    }void * result = NULL;
+    switch(compare(avl_root->data,newdata)){
+        case 0:
+            result = avl_root->data;
+            break;
+        case 1:
+            result = avl_read(avl_root->left_child,newdata,compare);
+            break;
+        case -1:
+            result = avl_read(avl_root->right_child,newdata,compare);
+            break;
+        default:
+            break;
+    }return result;
+}

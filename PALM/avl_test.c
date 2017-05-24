@@ -26,6 +26,17 @@ static int compare(void *data,void *newdata)
     }
     return 1;
 }
+static void* construct(void *newdata,size_t data_size)
+{
+    void * tmp;
+    if((tmp=(void *)malloc(sizeof(data_size)))==NULL)
+    {
+        perror("construct malloc failed!");
+        exit(-1);
+    }
+    memcpy(tmp,newdata,data_size);
+    return tmp;
+}
 static void update(void *data,void *newdata)
 {
     struct test_struct * a,*b;
@@ -46,7 +57,7 @@ int main()
     while(1)
     {
         int i,j;
-         struct test_struct t;
+        struct test_struct t;
         printf("please enter command(i:insert  p:print q:quit):");
         char ch = getchar();
         switch(ch)

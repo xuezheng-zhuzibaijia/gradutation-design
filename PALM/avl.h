@@ -15,9 +15,11 @@ struct data_list{
 typedef int (*contain_func)(void *data,void * c);
 void avl_init(avl_pointer * avl_root,int *unbalanced);
 void avl_destroy(avl_pointer * avl_root);
-void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,
-    int *unbalanced,int (*compare)(void *data,void *newdata),
+void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanced,
+    void* (*construct)(void *newdata,size_t data_size),
+    int (*compare)(void *data,void *newdata),
     void (*update)(void *data,void *newdata));
 struct data_list* avl_print(avl_pointer avl_root,
        contain_func  contain,void * c);
+void * data avl_read(avl_pointer avl_root,int (*compare)(void* data,void *newdata));
 #endif // AVL_H_INCLUDED
