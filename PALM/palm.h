@@ -6,7 +6,7 @@
 #ifndef MAX_QUERY_SIZE
 #define MAX_QUERY_SIZE (MAX_LIST_SIZE/2)
 #endif // MAX_QUERY_SIZE
-#endif
+#define THREADS 4
 typedef enum {LT,GT,NE,LE,GE,EQ} relop;
 typedef enum {AND,OR} boolop;
 struct condition {
@@ -39,6 +39,7 @@ struct rangeop{
     struct condition_set * range_condition;
     int read_id;
     int id_num;
+    struct data_list * result;
 };
 struct rangeop rangeop_list[MAX_QUERY_SIZE];
 int rangeop_list_count;

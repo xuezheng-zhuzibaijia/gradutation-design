@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <string.h>
 #include "avl.h"
 struct test_struct
 {
@@ -29,7 +29,7 @@ static int compare(void *data,void *newdata)
 static void* construct(void *newdata,size_t data_size)
 {
     void * tmp;
-    if((tmp=(void *)malloc(sizeof(data_size)))==NULL)
+    if((tmp=(void *)malloc(data_size))==NULL)
     {
         perror("construct malloc failed!");
         exit(-1);
@@ -67,7 +67,7 @@ int main()
             scanf("%d %d",&i,&j);
             t.key = i;
             t.value = j;
-            avl_insert(&avl_root,&t,sizeof(t),&unbalanced,compare,update);
+            avl_insert(&avl_root,&t,sizeof(t),&unbalanced,construct,compare,update);
             break;
         case 'p':
             printf("tree is : ");

@@ -11,7 +11,7 @@ TOID_DECLARE(struct tree,BTREE_TYPE_OFFSET+1);
 TOID_DECLARE(void,BTREE_TYPE_OFFSET+2);
 TOID_DECLARE(struct leaf_arg,BTREE_TYPE_OFFSET+3);
 typedef int key_t;
-typedef TOID(struct tree_node) node_pointer;
+typedef (struct tree_node) node_pointer;
 struct leaf_arg{
      int is_deleted;
      size_t  vsizes[BTREE_ORDER];
@@ -49,19 +49,22 @@ struct nodeop{
         struct keyop * op_list;
         node_pointer n;
 };
-struct {
+struct record{
         int id;
         key_t key;
-}change_record[MAX_LIST_SIZE];
+};
+struct record record_list[MAX_LIST_SIZE];
 
-int change_record_count;
-kvpair * read_record[MAX_LIST_SIZE];
+int record_list_count;
+kvpair read_record[MAX_LIST_SIZE];
 int read_record_count;
 
 node_pointer make_node();
 node_pointer make_leaf();
 void btree_init(TOID(struct tree) t);
-void leaf_operation(struct nodeop *p,node_pointer * root);
-void node_operation(struct nodeop *p,node_pointer * root);
 node_pointer get_leaf(node_pointer root,key_t key);
+node_pointer get_leftest_leaf(node_pointer root);
+void common_operation(struct nodeop *p,node_pointer * root);
 #endif // BTREE_H_INCLUDED
+
+

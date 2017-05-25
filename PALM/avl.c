@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "avl.h"
+
+#define DEBUG(str)
 /**
  * avl.c是用于支持PALM树预处理的数据结构以及相关操作
  *
@@ -51,6 +53,7 @@ static void left_rotation(avl_pointer * parent,int *unbalanced)
 
 static void right_rotation(avl_pointer * parent,int *unbalanced)
 {
+    DEBUG("right_rotation\n");
     avl_pointer grand_child, child;
     child = (*parent)->right_child;
     if(child->bf == -1)
@@ -93,8 +96,10 @@ static void right_rotation(avl_pointer * parent,int *unbalanced)
 void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanced,void* (*construct)(void *newdata,size_t data_size),
 int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata))
 {
+    DEBUG("insert\n");
     if(!(*parent))
     {
+        DEBUG("NULL\n");
         *unbalanced = TRUE;
         *parent = (avl_pointer)malloc(sizeof(struct avl_node));
         if((*parent)==NULL)
@@ -105,9 +110,11 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
         (*parent)->bf = 0;
         (*parent)->left_child = (*parent)->right_child = NULL;
         (*parent)->data = construct(newdata,data_size);
+        DEBUG("NULL_end\n");
     }
     else if(compare((*parent)->data,newdata)==1) //node value larger than newdata
     {
+        DEBUG("left_start\n");
         avl_insert(&((*parent)->left_child),newdata,data_size,unbalanced,construct,compare,update);
         if(*unbalanced)
         {
@@ -124,7 +131,7 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
                 *unbalanced = FALSE;
                 break;
             }
-        }
+        }DEBUG("left_end\n");
     }
     else if(compare((*parent)->data,newdata)==-1)
     {
@@ -138,13 +145,13 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
                 *unbalanced = FALSE;
                 break;
             case 0:
-                (*parent)->bf = 1;
+                (*parent)->bf = -1;
                 break;
             case -1:
                 right_rotation(parent,unbalanced);
                 break;
             }
-        }
+        }DEBUG("right\n");
     }
     else
     {
@@ -161,7 +168,6 @@ void avl_destroy(avl_pointer * parent)
     if(!(*parent)) return;
     avl_destroy(&((*parent)->left_child));
     avl_destroy(&((*parent)->right_child));
-    free((*parent)->data);
     free(*parent);
     *parent = NULL;
 }
@@ -207,7 +213,8 @@ struct data_list * avl_print(avl_pointer avl_root,contain_func contain,void *c)
     collect_interval(result,avl_root,contain,c);
     return result;
 }
-void * data avl_read(avl_pointer avl_root,void *newdata,int (*compare)(void* data,void *newdata))
+
+void * avl_read(avl_pointer avl_root,void *newdata,int (*compare)(void* data,void *newdata))
 {
     if(avl_root==NULL){
         return NULL;

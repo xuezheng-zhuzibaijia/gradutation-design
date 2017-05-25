@@ -19,7 +19,6 @@ void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanc
     void* (*construct)(void *newdata,size_t data_size),
     int (*compare)(void *data,void *newdata),
     void (*update)(void *data,void *newdata));
-struct data_list* avl_print(avl_pointer avl_root,
-       contain_func  contain,void * c);
-void * data avl_read(avl_pointer avl_root,int (*compare)(void* data,void *newdata));
+struct data_list* avl_print(avl_pointer avl_root,contain_func  contain,void * c);
+void * avl_read(avl_pointer avl_root,void *newdata,int (*compare)(void* data,void *newdata));
 #endif // AVL_H_INCLUDED
