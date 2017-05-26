@@ -6,7 +6,7 @@
 #ifndef MAX_QUERY_SIZE
 #define MAX_QUERY_SIZE (MAX_LIST_SIZE/2)
 #endif // MAX_QUERY_SIZE
-#define THREADS 4
+#define THREAD_NUM 4
 typedef enum {LT,GT,NE,LE,GE,EQ} relop;
 typedef enum {AND,OR} boolop;
 struct condition {
@@ -31,9 +31,7 @@ struct operation{
 struct operation operation_list[MAX_QUERY_SIZE];
 int operation_list_count;
 
-struct keyop keyop_list[MAX_LIST_SIZE];
-int keyop_list_count;
-node_pointer targets[MAX_LIST_SIZE];
+
 struct rangeop{
     int id;
     struct condition_set * range_condition;
@@ -51,5 +49,21 @@ int modified_list_count;
 struct noppair{
     node_pointer n;
     keyop p;
+};
+struct get_target_arg{
+    int start_index;
+    int step;
+    node_pointer root;
+};
+struct process_node_arg{
+    int start_index;
+    int step;
+    node_pointer *root;
+};
+struct range_operation_arg{
+    int start_index;
+    int step;
+    avl_pointer avl_root;
+    node_pointer leaf_head;
 };
 #endif // PALM_H_INCLUDED

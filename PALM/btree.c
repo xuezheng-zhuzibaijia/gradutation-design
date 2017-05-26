@@ -275,12 +275,12 @@ static void leaf_operation(struct nodeop * p,node_pointer root)
             memcpy(D_RO(D_RO(tmp)->arg)->vsize,vsizes+base,sizeof(size_t)*BTREE_MIN);
             do
             {
-                tmp_count = modified_list_count;
+                tmp_count = keyop_list_count;
             }
-            while(!__sync_compare_and_swap(&modified_list_count,tmp_count,tmp_count+1));
-            modified_list[tmp_count].op = INSERT;
-            modified_list[tmp_count].child = tmp.oid;
-            modified_list[tmp_count].key = D_RO(tmp)->keys[0];
+            while(!__sync_compare_and_swap(&keyop_list_count,tmp_count,tmp_count+1));
+            keyop_list[tmp_count].op = INSERT;
+            keyop_list[tmp_count].child = tmp.oid;
+            keyop_list[tmp_count].key = D_RO(tmp)->keys[0];
             targets[tmp_count] = tmp;
             D_RW(sibling)->pointers[BTREE_ORDER] = tmp.oid;
             sibling = tmp;
@@ -293,12 +293,12 @@ static void leaf_operation(struct nodeop * p,node_pointer root)
         memcpy(D_RO(D_RO(tmp)->arg)->vsizes,vsizes+base,sizeof(size_t)*(length-base));
         do
         {
-            tmp_count = modified_list_count;
+            tmp_count = keyop_list_count;
         }
-        while(!__sync_compare_and_swap(&modified_list_count,tmp_count,tmp_count+1));
-        modified_list[tmp_count].op = INSERT;
-        modified_list[tmp_count].child = tmp.oid;
-        modified_list[tmp_count].key = D_RO(tmp)->keys[0];
+        while(!__sync_compare_and_swap(&keyop_list_count,tmp_count,tmp_count+1));
+        keyop_list[tmp_count].op = INSERT;
+        keyop_list[tmp_count].child = tmp.oid;
+        keyop_list[tmp_count].key = D_RO(tmp)->keys[0];
         targets[tmp_count] = tmp;
         D_RW(sibling)->pointers[BTREE_ORDER] = tmp.oid;
         D_RW(tmp)->pointers[BTREE_ORDER] = tail;
@@ -433,12 +433,12 @@ static void node_operation(struct nodeop *p,node_pointer * root)
             }
             do
             {
-                insert_index = modified_list_count;
+                insert_index = keyop_list_count;
             }
-            while(!__sync_compare_and_swap(&modified_list_count,insert_index,insert_index + 1));
-            modified_list[insert_index].child = tmp.oid;
-            modified_list[insert_index].op = INSERT;
-            modified_list[insert_index].key = keys[k];
+            while(!__sync_compare_and_swap(&keyop_list_count,insert_index,insert_index + 1));
+            keyop_list[insert_index].child = tmp.oid;
+            keyop_list[insert_index].op = INSERT;
+            keyop_list[insert_index].key = keys[k];
             targets[insert_index] = D_RO(n)->parent;
             base += BTREE_MIN;
         }
@@ -453,12 +453,12 @@ static void node_operation(struct nodeop *p,node_pointer * root)
         }
         do
         {
-            insert_index = modified_list_count;
+            insert_index = keyop_list_count;
         }
-        while(!__sync_compare_and_swap(&modified_list_count,insert_index,insert_index + 1));
-        modified_list[insert_index].child = tmp.oid;
-        modified_list[insert_index].op = INSERT;
-        modified_list[insert_index].key = keys[k];
+        while(!__sync_compare_and_swap(&keyop_list_count,insert_index,insert_index + 1));
+        keyop_list[insert_index].child = tmp.oid;
+        keyop_list[insert_index].op = INSERT;
+        keyop_list[insert_index].key = keys[k];
         targets[insert_index] = D_RO(n)->parent;
     }
     free(keys);

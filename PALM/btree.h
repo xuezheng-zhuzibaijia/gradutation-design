@@ -58,6 +58,9 @@ struct record record_list[MAX_LIST_SIZE];
 int record_list_count;
 kvpair read_record[MAX_LIST_SIZE];
 int read_record_count;
+struct keyop keyop_list[MAX_LIST_SIZE];
+int keyop_list_count;
+node_pointer targets[MAX_LIST_SIZE];
 
 node_pointer make_node();
 node_pointer make_leaf();

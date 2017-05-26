@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include "palm.h"
 void palm_init()
 {
@@ -89,7 +90,7 @@ static int contain1(void *data,void *c)
     }
     return base;
 }
-void operation_init
+static void operation_init()
 {
     avl_pointer avl_root;
     int unbalanced;
@@ -138,8 +139,11 @@ void operation_init
 /**
  *thread-operation--get the leaf
  */
-void get_target(int start_index,int step,node_pointer root)
+void get_target(void *arg)
 {
+    struct get_target_arg * targ = (struct get_target_arg *)arg;
+    int start_index=targ->start_index,step = targ->step;
+    node_pointer root = targ->root;
     while(start_index < keyop_list_count)
     {
         targets[start_index] = get_leaf(root,keyop_list[start_index].key);
@@ -221,8 +225,13 @@ void redistribute_key()
 /**
   *pthread_operation
   */
-void process_node(int start_index,int step,node_pointer * root)
+static void process_node(void * arg)
 {
+    struct process_node_arg * targ = (struct process_node_arg *)arg;
+    int start_index = targ->start_index;
+    int step = targ->step;
+    node_pointer * root;
+    root = targ->root;
     while(start_index < modified_list_count)
     {
         common_operation(&modified_list[i],root);
@@ -334,8 +343,12 @@ static void range_result_count(int start_index,avl_pointer avl_root,node_pointer
     tmp->num = 0;
     rangeop_list[start_index].result = tmp;
 }
-static void range_operation(int start_index,int step,avl_pointer avl_root,node_pointer leaf_head)
+static void range_operation(void *arg)
 {
+    struct range_operation_arg * targ = (struct range_operation_arg *)arg;
+    int start_index = targ->start_index,step = targ->step;
+    avl_pointer avl_root = targ->avl_root;
+    node_pointer leaf_head = targ->leaf_head;
     while(start_index < rangeop_list_count)
     {
         kvpair * read_buffer = (kvpair *)bsearch(rangeop_list[start_index].id,rangeop_list,sizeof(kvpair),sizeof(kvpair)*rangeop_list_count,compare4);
@@ -422,8 +435,71 @@ static void delete_leaves(node_pointer leaf_head)
     }
 }
 /**
+  *assume there is already exisiting keyop_list
   */
-void palm_process(){
+void palm_process(node_pointer *root){
+    pthread_t threads[THREAD_NUM];
+    /**stage get the leaves which is going to operate on*/
+    for(int i = 0;i < THREAD_NUM;i++){
+        struct get_target_arg tmp;
+        tmp.root = *root;
+        tmp.start_index = i;
+        tmp.step = THREAD_NUM;
+        pthread_create(&threads[i],NULL,get_target,(void *)&tmp);
+    }for(int i = 0;i < THREAD_NUM;i++){
+        pthread_join(threads[i],NULL);
+    }
+    /**stage operation in modified list*/
+    while(modified_list_count > 0){
+        redistribute_key();
+        keyop_list_count = 0;
+        for(int i = 0;i < THREAD_NUM;i++){
+            struct process_node_arg tmp;
+            tmp.start_index = i;
+            tmp.step = THREAD_NUM;
+            tmp.root = root;
+            pthread_create(&threads[i],NULL,process_node,(void *)&tmp);
+        }for(int i = 0;i < THREAD_NUM;i++){
+            pthread_join(threads[i],NULL);
+        }clear_modified_list();
+    }
+}
+void post_process(node_pointer leaf_head){
+     avl_pointer avl_root = build_record_avl();
+     pthread_t threads[THREAD_NUM];
+     for(int i = 0;i < THREAD_NUM;i++){
+        struct range_operation_arg tmp;
+        tmp.avl_root = avl_root;
+        tmp.leaf_head = leaf_head;
+        tmp.start_index = i;
+        tmp.step = THREAD_NUM;
+        pthread_create(&threads[i],NULL,range_operation,(void *)&tmp);
+    }for(int i = 0;i < THREAD_NUM;i++){
+        pthread_join(threads[i],NULL);
+    }avl_destroy(&avl_root);
+}
 
+void get_operations();
+
+void palm(PMEMobjpool *pop){
+    palm_init();
+    get_operations();
+    operation_init();
+    /**keyop_list is ready*/
+    TOID(struct tree) t = POBJ_ROOT(pop,struct tree);
+    node_pointer root = D_RO(t)->root;
+    node_pointer leaf_head = D_RO(t)->leaf_head;
+    TX_BEGIN(pop){
+        palm_process(&root);
+        TX_SET(t,root,root);
+        post_process(leaf_head);
+        delete_leaves(leaf_head);
+        leaf_head = get_leftest_leaf(root);
+        TX_SET(t,leaf_head,leaf_head);
+        palm_process(&root);
+        TX_SET(t,root,root);
+        leaf_head = get_leftest_leaf(root);
+        TX_SET(t,leaf_head,leaf_head);
+    }TX_END
 }
 
