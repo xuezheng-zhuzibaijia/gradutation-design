@@ -48,7 +48,7 @@ int modified_list_count;
 
 struct noppair{
     node_pointer n;
-    keyop p;
+    struct keyop p;
 };
 struct get_target_arg{
     int start_index;
@@ -59,6 +59,7 @@ struct process_node_arg{
     int start_index;
     int step;
     node_pointer *root;
+    int is_record;
 };
 struct range_operation_arg{
     int start_index;
@@ -66,4 +67,5 @@ struct range_operation_arg{
     avl_pointer avl_root;
     node_pointer leaf_head;
 };
+void palm(PMEMobjpool *pop);
 #endif // PALM_H_INCLUDED

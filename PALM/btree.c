@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <pthread.h>
 #include "btree.h"
 node_pointer make_node()
@@ -21,14 +22,15 @@ node_pointer make_leaf()
     return t;
 }
 
-void btree_init(TOID(struct tree) t)
+void btree_init(PMEMobjpool *pop)
 {
-    if(TOID_IS_NULL(D_RO(t)->root,struct tree_node))
-    {
+    TOID(struct tree) t = POBJ_ROOT(pop,struct tree);
+    TX_BEGIN(pop){
         TX_SET(t,root,make_leaf());
-    }
+        TX_SET(t,leaf_head,D_RO(t)->root);
+    }TX_END
 }
-static int search_exact(key_t * keys,key_t key,int length)
+static int search_exact(const key_t * keys,key_t key,int length)
 {
     int left = 0,right = length - 1;
     while(left <= right)
@@ -49,7 +51,7 @@ static int search_exact(key_t * keys,key_t key,int length)
     }
     return -1;
 }
-static int search_fuzzy(key_t *keys,key_t key,int length)
+static int search_fuzzy(const key_t *keys,key_t key,int length)
 {
     int left = 0,right = length - 1;
     while(left <= right)
@@ -110,15 +112,15 @@ static void leaf_update(struct keyop p,key_t *keys,PMEMoid*values,size_t *vsizes
         p.update(pmemobj_direct(values[index]));
     }
 }
-static int leaf_insert(struct keyop p,key_t *keys,PMEMoid *values,size_t *vsizes,int* length)
+static void leaf_insert(struct keyop p,key_t *keys,PMEMoid *values,size_t *vsizes,int* length,int is_record)
 {
     int index = search_exact(keys,p.key,*length);
     if(index!=-1)
     {
         return;
     }
-    index = search_fuzzy(keys,p.key,length);
-    for(int i = length-1; i>=index; i--)
+    index = search_fuzzy(keys,p.key,*length);
+    for(int i = *length-1; i>=index; i--)
     {
         keys[i+1] = keys[i];
         values[i+1] = values[i];
@@ -130,14 +132,16 @@ static int leaf_insert(struct keyop p,key_t *keys,PMEMoid *values,size_t *vsizes
     values[index] = tmp;
     vsizes[index] = p.vsize;
     (*length)++;
-    int record_index;
-    do
-    {
-        record_index = record_list_count;
+    if(is_record){
+        int record_index;
+        do
+        {
+            record_index = record_list_count;
+        }
+        while(!__sync_compare_and_swap(&record_list_count,record_index,record_index+1));
+        record_list[record_index].id = p.id;
+        record_list[record_index].key = p.key;
     }
-    while(!__sync_compare_and_swap(&record_list_count,record_index,record_index+1));
-    record_list[record_index].id = p.id;
-    record_list[record_index].key = p.key;
 }
 static void leaf_delete(struct keyop p,key_t* keys,PMEMoid *values,size_t*vsizes,int *length)
 {
@@ -163,8 +167,8 @@ static void node_insert(struct keyop p,key_t * keys,PMEMoid *children,int* lengt
         keys[i+1] = keys[i];
         children[i+2] = children[i+1];
     }
-    keys[i] = p.key;
-    children[i] = p.child;
+    keys[index] = p.key;
+    children[index] = p.child;
     (*length)++;
 }
 static void node_delete(struct keyop p,key_t *keys,PMEMoid *children,int *length)
@@ -193,7 +197,7 @@ static void node_delete(struct keyop p,key_t *keys,PMEMoid *children,int *length
     }(*length)--;
 }
 
-static void leaf_operation(struct nodeop * p,node_pointer root)
+static void leaf_operation(struct nodeop * p,node_pointer root,int is_record)
 {
     node_pointer leaf = p->n;
     key_t * keys;
@@ -230,7 +234,7 @@ static void leaf_operation(struct nodeop * p,node_pointer root)
             leaf_delete(p->op_list[i],keys,values,vsizes,&length);
             break;
         case INSERT:
-            leaf_insert(p->op_list[i],keys,values,vsizes,&length);
+            leaf_insert(p->op_list[i],keys,values,vsizes,&length,is_record);
             break;
         case READ:
             leaf_read(p->op_list[i],keys,values,vsizes,length);
@@ -252,27 +256,27 @@ static void leaf_operation(struct nodeop * p,node_pointer root)
             D_RW(D_RW(leaf)->arg)->is_deleted = TRUE;
         }
         D_RW(leaf)->num_keys = length;
-        memcpy(D_RO(leaf)->keys,keys,sizeof(key_t)*length);
-        memcpy(D_RO(leaf)->pointers,values,sizeof(PMEMoid)*length);
-        memcpy(D_RO(D_RO(leaf)->arg)->vsize,vsizes,sizeof(size_t)*length);
+        memcpy(D_RW(leaf)->keys,keys,sizeof(key_t)*length);
+        memcpy(D_RW(leaf)->pointers,values,sizeof(PMEMoid)*length);
+        memcpy(D_RW(D_RW(leaf)->arg)->vsizes,vsizes,sizeof(size_t)*length);
     }
     else
     {
         PMEMoid tail = D_RO(leaf)->pointers[BTREE_ORDER];
         node_pointer sibling = leaf;
-        D_RO(leaf)->num_keys = BTREE_MIN;
-        memcpy(D_RO(leaf)->keys,keys,sizeof(key_t)*BTREE_MIN);
-        memcpy(D_RO(leaf)->pointers,values,sizeof(PMEMoid)*BTREE_MIN);
-        memcpy(D_RO(D_RO(leaf)->arg)->vsize,vsizes,sizeof(size_t)*BTREE_MIN);
+        D_RW(leaf)->num_keys = BTREE_MIN;
+        memcpy(D_RW(leaf)->keys,keys,sizeof(key_t)*BTREE_MIN);
+        memcpy(D_RW(leaf)->pointers,values,sizeof(PMEMoid)*BTREE_MIN);
+        memcpy(D_RW(D_RW(leaf)->arg)->vsizes,vsizes,sizeof(size_t)*BTREE_MIN);
         int base = BTREE_ORDER;
         int tmp_count;
         while(length - base > BTREE_ORDER)
         {
             node_pointer tmp = make_leaf();
             D_RW(tmp)->num_keys = BTREE_MIN;
-            memcpy(D_RO(tmp)->keys,keys+base,sizeof(key_t)*BTREE_MIN);
-            memcpy(D_RO(tmp)->pointers,values+base,sizeof(PMEMoid)*BTREE_MIN);
-            memcpy(D_RO(D_RO(tmp)->arg)->vsize,vsizes+base,sizeof(size_t)*BTREE_MIN);
+            memcpy(D_RW(tmp)->keys,keys+base,sizeof(key_t)*BTREE_MIN);
+            memcpy(D_RW(tmp)->pointers,values+base,sizeof(PMEMoid)*BTREE_MIN);
+            memcpy(D_RW(D_RW(tmp)->arg)->vsizes,vsizes+base,sizeof(size_t)*BTREE_MIN);
             do
             {
                 tmp_count = keyop_list_count;
@@ -288,9 +292,9 @@ static void leaf_operation(struct nodeop * p,node_pointer root)
         }
         node_pointer tmp = make_leaf();
         D_RW(tmp)->num_keys = length-base;
-        memcpy(D_RO(tmp)->keys,keys+base,sizeof(key_t)*(length-base));
-        memcpy(D_RO(tmp)->pointers,values+base,sizeof(PMEMoid)*(length-base));
-        memcpy(D_RO(D_RO(tmp)->arg)->vsizes,vsizes+base,sizeof(size_t)*(length-base));
+        memcpy(D_RW(tmp)->keys,keys+base,sizeof(key_t)*(length-base));
+        memcpy(D_RW(tmp)->pointers,values+base,sizeof(PMEMoid)*(length-base));
+        memcpy(D_RW(D_RW(tmp)->arg)->vsizes,vsizes+base,sizeof(size_t)*(length-base));
         do
         {
             tmp_count = keyop_list_count;
@@ -370,8 +374,8 @@ static void node_operation(struct nodeop *p,node_pointer * root)
     {
         if(length >= 0){
             D_RW(n)->num_keys = length;
-            memcpy(D_RO(n)->keys,keys,sizeof(key_t)*length);
-            memcpy(D_RO(n)->pointers,children,sizeof(PMEMoid)*(length+1));
+            memcpy(D_RW(n)->keys,keys,sizeof(key_t)*length);
+            memcpy(D_RW(n)->pointers,children,sizeof(PMEMoid)*(length+1));
         }
         for(int i = 0; i < length+1; i++)
         {
@@ -398,11 +402,11 @@ static void node_operation(struct nodeop *p,node_pointer * root)
                 destory_subtree(n);
                 do
                 {
-                    insert_index = modified_list_count;
+                    insert_index = keyop_list_count;
                 }
-                while(!__sync_compare_and_swap(&modified_list_count,insert_index,insert_index + 1));
-                modified_list[insert_index].child = n.oid;
-                modified_list[insert_index].op = DELETE;
+                while(!__sync_compare_and_swap(&keyop_list_count,insert_index,insert_index + 1));
+                keyop_list[insert_index].child = n.oid;
+                keyop_list[insert_index].op = DELETE;
                 targets[insert_index] = D_RO(n)->parent;
             }
         }
@@ -410,8 +414,8 @@ static void node_operation(struct nodeop *p,node_pointer * root)
     else
     {
         D_RW(n)->num_keys = BTREE_MIN;
-        memcpy(D_RO(n)->keys,keys,sizeof(key_t)*BTREE_MIN);
-        memcpy(D_RO(n)->pointers,children,sizeof(PMEMoid)*(BTREE_MIN+1));
+        memcpy(D_RW(n)->keys,keys,sizeof(key_t)*BTREE_MIN);
+        memcpy(D_RW(n)->pointers,children,sizeof(PMEMoid)*(BTREE_MIN+1));
         for(int i = 0; i < BTREE_MIN+1; i++)
         {
             node_pointer c;
@@ -423,8 +427,8 @@ static void node_operation(struct nodeop *p,node_pointer * root)
         while(length-base > BTREE_ORDER)
         {
             tmp = make_node();
-            memcpy(D_RO(tmp)->keys,keys+base+1,sizeof(key_t)*(BTREE_MIN-1));
-            memcpy(D_RO(tmp)->pointers,children+base,sizeof(PMEMoid)*BTREE_MIN);
+            memcpy(D_RW(tmp)->keys,keys+base+1,sizeof(key_t)*(BTREE_MIN-1));
+            memcpy(D_RW(tmp)->pointers,children+base,sizeof(PMEMoid)*BTREE_MIN);
             for(int i = 0; i < BTREE_MIN; i++)
             {
                 node_pointer c;
@@ -438,13 +442,13 @@ static void node_operation(struct nodeop *p,node_pointer * root)
             while(!__sync_compare_and_swap(&keyop_list_count,insert_index,insert_index + 1));
             keyop_list[insert_index].child = tmp.oid;
             keyop_list[insert_index].op = INSERT;
-            keyop_list[insert_index].key = keys[k];
+            keyop_list[insert_index].key = keys[base];
             targets[insert_index] = D_RO(n)->parent;
             base += BTREE_MIN;
         }
         tmp = make_node();
-        memcpy(D_RO(tmp)->keys,keys+base+1,sizeof(key_t)*(length-base-1));
-        memcpy(D_RO(tmp)->pointers,children+base,sizeof(PMEMoid)*(length-base));
+        memcpy(D_RW(tmp)->keys,keys+base+1,sizeof(key_t)*(length-base-1));
+        memcpy(D_RW(tmp)->pointers,children+base,sizeof(PMEMoid)*(length-base));
         for(int i = 0; i < length-base; i++)
         {
             node_pointer c;
@@ -458,7 +462,7 @@ static void node_operation(struct nodeop *p,node_pointer * root)
         while(!__sync_compare_and_swap(&keyop_list_count,insert_index,insert_index + 1));
         keyop_list[insert_index].child = tmp.oid;
         keyop_list[insert_index].op = INSERT;
-        keyop_list[insert_index].key = keys[k];
+        keyop_list[insert_index].key = keys[base];
         targets[insert_index] = D_RO(n)->parent;
     }
     free(keys);
@@ -477,10 +481,10 @@ node_pointer get_leftest_leaf(node_pointer root){
         TOID_ASSIGN(c,D_RO(c)->pointers[0]);
     }return c;
 }
-void common_operation(struct nodeop *p,node_pointer * root){
-    if(TOID_IS_NULL(D_RO(p->n)) || (!D_RO(p->n)->is_leaf)){
+void common_operation(struct nodeop *p,node_pointer * root,int is_record){
+    if(TOID_IS_NULL(p->n) || (!D_RO(p->n)->is_leaf)){
         node_operation(p,root);
     }else{
-        leaf_operation(p,*root);
+        leaf_operation(p,*root,is_record);
     }
 }

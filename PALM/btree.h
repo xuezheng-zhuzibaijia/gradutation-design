@@ -4,14 +4,16 @@
 #include "basetype.h"
 #define BTREE_ORDER 8
 #define BTREE_MIN (BTREE_ORDER / 2)
+
 #ifndef BTREE_TYPE_OFFSET
 #define BTREE_TYPE_OFFSET 1012
+#endif // BTREE_TYPE_OFFSET
 TOID_DECLARE(struct tree_node,BTREE_TYPE_OFFSET);
 TOID_DECLARE(struct tree,BTREE_TYPE_OFFSET+1);
 TOID_DECLARE(void,BTREE_TYPE_OFFSET+2);
 TOID_DECLARE(struct leaf_arg,BTREE_TYPE_OFFSET+3);
 typedef int key_t;
-typedef (struct tree_node) node_pointer;
+typedef TOID(struct tree_node) node_pointer;
 struct leaf_arg{
      int is_deleted;
      size_t  vsizes[BTREE_ORDER];
@@ -62,12 +64,14 @@ struct keyop keyop_list[MAX_LIST_SIZE];
 int keyop_list_count;
 node_pointer targets[MAX_LIST_SIZE];
 
+
+
 node_pointer make_node();
 node_pointer make_leaf();
-void btree_init(TOID(struct tree) t);
+void btree_init(PMEMobjpool *pop);
 node_pointer get_leaf(node_pointer root,key_t key);
 node_pointer get_leftest_leaf(node_pointer root);
-void common_operation(struct nodeop *p,node_pointer * root);
+void common_operation(struct nodeop *p,node_pointer * root,int is_record);
 #endif // BTREE_H_INCLUDED
 
 

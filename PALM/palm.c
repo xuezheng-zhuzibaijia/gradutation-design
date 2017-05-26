@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <stddef.h>
 #include "palm.h"
-void palm_init()
+static void palm_init()
 {
     modified_list_count = 0;
     record_list_count = 0;
@@ -65,7 +66,7 @@ static int is_pass(struct condition c,key_t key)
 }
 static int contain1(void *data,void *c)
 {
-    struct condition_set * cset = (struct condition_set)c;
+    struct condition_set * cset = (struct condition_set *)c;
     if(cset==NULL)
     {
         return 1;
@@ -115,10 +116,10 @@ static void operation_init()
             rangeop_list[rangeop_list_count].id = id;
             rangeop_list[rangeop_list_count].id_num = operation_list[i].preread_list->num;
             rangeop_list_count++;
-            for(int j = 0; j < operation_list[i].preread_list->num)
+            for(int j = 0; j < operation_list[i].preread_list->num;j++)
             {
                 keyop_list[keyop_list_count].id = id++;
-                keyop_list[keyop_list_count].key = *((key_t *)operation_list[i].preread_list->data[i]);
+                keyop_list[keyop_list_count].key = *((key_t *)operation_list[i].preread_list->data[j]);
                 keyop_list[keyop_list_count].op = READ;
                 keyop_list_count++;
             }
@@ -139,7 +140,7 @@ static void operation_init()
 /**
  *thread-operation--get the leaf
  */
-void get_target(void *arg)
+static void* get_target(void *arg)
 {
     struct get_target_arg * targ = (struct get_target_arg *)arg;
     int start_index=targ->start_index,step = targ->step;
@@ -148,7 +149,7 @@ void get_target(void *arg)
     {
         targets[start_index] = get_leaf(root,keyop_list[start_index].key);
         start_index += step;
-    }
+    }return NULL;
 }
 static void * construct1(void *newdata,size_t data_size)
 {
@@ -178,11 +179,11 @@ static void update1(void *data, void *newdata)
     struct nodeop * tmp = (struct nodeop *)data;
     tmp->num++;
 }
-static void update2(struct nodeop * tmp,keyop p)
+static void update2(struct nodeop * tmp,struct keyop p)
 {
     if(tmp->op_list==NULL)
     {
-        if((tmp->op_list=(keyop *)malloc(sizeof(keyop)*tmp->num))==NULL)
+        if((tmp->op_list=(struct keyop *)malloc(sizeof(struct keyop)*tmp->num))==NULL)
         {
             perror("nodeop update malloc failed");
             exit(-1);
@@ -191,29 +192,29 @@ static void update2(struct nodeop * tmp,keyop p)
     }
     tmp->op_list[tmp->num++] = p;
 }
-void clear_modified_list()
+static void clear_modified_list()
 {
     for(int i = 0; i < modified_list_count; i++)
     {
-        free(modified_list_count[i].op_list);
+        free(modified_list[i].op_list);
     }
     modified_list_count = 0;
 }
 
-void redistribute_key()
+static void redistribute_key()
 {
     avl_pointer avl_root;
     int unbalanced = FALSE;
-    avl_init(avl_root,&unbalanced);
+    avl_init(&avl_root,&unbalanced);
     for(int i = 0; i < keyop_list_count; i++)
     {
-        avl_insert(avl_root,&targets[i],sizeof(node_pointer),&unbalanced,construct1,compare1,update1);
+        avl_insert(&avl_root,&targets[i],sizeof(node_pointer),&unbalanced,construct1,compare1,update1);
     }
     for(int i = 0; i < keyop_list_count; i++)
     {
-        update2(avl_read(*avl_root,&targets[i],compare1),keyop_list[i]);
+        update2(avl_read(avl_root,&targets[i],compare1),keyop_list[i]);
     }
-    struct data_list * result = avl_print(*avl_root,contain,NULL);
+    struct data_list * result = avl_print(avl_root,contain,NULL);
     for(int i = 0; i < result->num; i++)
     {
         modified_list[i] = *((struct nodeop*)(result->data[i]));
@@ -225,18 +226,19 @@ void redistribute_key()
 /**
   *pthread_operation
   */
-static void process_node(void * arg)
+static void* process_node(void * arg)
 {
     struct process_node_arg * targ = (struct process_node_arg *)arg;
     int start_index = targ->start_index;
     int step = targ->step;
+    int is_record = targ->is_record;
     node_pointer * root;
     root = targ->root;
     while(start_index < modified_list_count)
     {
-        common_operation(&modified_list[i],root);
+        common_operation(&modified_list[start_index],root,is_record);
         start_index += step;
-    }
+    }return NULL;
 }
 static void update_record(void *data,void *newdata)
 {
@@ -276,7 +278,7 @@ static avl_pointer build_record_avl()
     avl_pointer avl_root;
     int unbalanced;
     avl_init(&avl_root,&unbalanced);
-    for(int i = 0; i < record__list_count; i++)
+    for(int i = 0; i < record_list_count; i++)
     {
         avl_insert(&avl_root,&record_list[i],sizeof(struct record),&unbalanced,construct_record,compare_record,update_record);
     }
@@ -284,8 +286,8 @@ static avl_pointer build_record_avl()
 }
 static int compare3(const void *data,const void *newdata)
 {
-    const kvpair *a = (const struct kvpair *)data;
-    const kvpair *b = (const struct kvpair *)newdata;
+    const kvpair *a = (const kvpair *)data;
+    const kvpair *b = (const kvpair *)newdata;
     if(a->id < b->id) return -1;
     if(a->id == b->id) return 0;
     return 1;
@@ -328,7 +330,7 @@ static void range_result_count(int start_index,avl_pointer avl_root,node_pointer
         struct record * t;
         for(int i = 0; i < D_RO(c)->num_keys; i++)
         {
-            t = (struct record *)avl_read(avl_root,&(D_RO(c)->keys[i]),compare5);
+            t = (struct record *)avl_read(avl_root,&(D_RW(c)->keys[i]),compare5);
             if(t==NULL || t->id < rangeop_list[start_index].id)
             {
                 tmp->num++;
@@ -343,7 +345,7 @@ static void range_result_count(int start_index,avl_pointer avl_root,node_pointer
     tmp->num = 0;
     rangeop_list[start_index].result = tmp;
 }
-static void range_operation(void *arg)
+static void * range_operation(void *arg)
 {
     struct range_operation_arg * targ = (struct range_operation_arg *)arg;
     int start_index = targ->start_index,step = targ->step;
@@ -351,7 +353,7 @@ static void range_operation(void *arg)
     node_pointer leaf_head = targ->leaf_head;
     while(start_index < rangeop_list_count)
     {
-        kvpair * read_buffer = (kvpair *)bsearch(rangeop_list[start_index].id,rangeop_list,sizeof(kvpair),sizeof(kvpair)*rangeop_list_count,compare4);
+        kvpair * read_buffer = (kvpair *)bsearch(&(rangeop_list[start_index].id),rangeop_list,sizeof(kvpair),sizeof(kvpair)*rangeop_list_count,compare4);
         node_pointer c = leaf_head;
         int i = 0,j = 0;
         kvpair * tmp;
@@ -372,7 +374,7 @@ static void range_operation(void *arg)
                     rangeop_list[start_index].result->data[rangeop_list[start_index].result->num++] = (void *)tmp;
                     i++;
                 }
-                t =avl_read(avl_root,&(D_RO(c)->keys[j]),compare5);
+                t =avl_read(avl_root,&(D_RW(c)->keys[j]),compare5);
                 if(t == NULL || t->id < rangeop_list[start_index].id)
                 {
                     if((tmp=(kvpair *)malloc(sizeof(kvpair)))==NULL)
@@ -389,14 +391,13 @@ static void range_operation(void *arg)
                     }
                     memcpy(tmp->value,pmemobj_direct(D_RO(c)->pointers[j]),tmp->vsize);
                     rangeop_list[start_index].result->data[rangeop_list[start_index].result->num++] = (void *)tmp;
-
                 }
                 j++;
             }
             TOID_ASSIGN(c,D_RO(c)->pointers[BTREE_ORDER]);
         }
         start_index += step;
-    }
+    }return NULL;
 }
 static void delete_leaves(node_pointer leaf_head)
 {
@@ -414,7 +415,7 @@ static void delete_leaves(node_pointer leaf_head)
                 keyop_list[keyop_list_count].key = D_RO(c)->keys[i];
                 keyop_list[keyop_list_count].vsize = D_RO(D_RO(c)->arg)->vsizes[i];
                 void * tmp;
-                if(tmp==(void *)malloc(keyop_list[keyop_list_count].vsize)==NULL){
+                if((tmp=(void *)malloc(keyop_list[keyop_list_count].vsize))==NULL){
                     perror("delete leaves malloc failed");
                     exit(-1);
                 }memcpy(tmp,pmemobj_direct(D_RO(c)->pointers[i]),keyop_list[keyop_list_count].vsize);
@@ -437,7 +438,7 @@ static void delete_leaves(node_pointer leaf_head)
 /**
   *assume there is already exisiting keyop_list
   */
-void palm_process(node_pointer *root){
+static void palm_process(node_pointer *root,int is_record){
     pthread_t threads[THREAD_NUM];
     /**stage get the leaves which is going to operate on*/
     for(int i = 0;i < THREAD_NUM;i++){
@@ -458,13 +459,18 @@ void palm_process(node_pointer *root){
             tmp.start_index = i;
             tmp.step = THREAD_NUM;
             tmp.root = root;
+            tmp.is_record = is_record;
             pthread_create(&threads[i],NULL,process_node,(void *)&tmp);
         }for(int i = 0;i < THREAD_NUM;i++){
             pthread_join(threads[i],NULL);
         }clear_modified_list();
     }
 }
-void post_process(node_pointer leaf_head){
+/**
+  *This one for range operation
+  */
+static void post_process(node_pointer leaf_head){
+     reorder_readrecord();
      avl_pointer avl_root = build_record_avl();
      pthread_t threads[THREAD_NUM];
      for(int i = 0;i < THREAD_NUM;i++){
@@ -479,27 +485,21 @@ void post_process(node_pointer leaf_head){
     }avl_destroy(&avl_root);
 }
 
-void get_operations();
-
 void palm(PMEMobjpool *pop){
     palm_init();
-    get_operations();
     operation_init();
     /**keyop_list is ready*/
     TOID(struct tree) t = POBJ_ROOT(pop,struct tree);
     node_pointer root = D_RO(t)->root;
     node_pointer leaf_head = D_RO(t)->leaf_head;
     TX_BEGIN(pop){
-        palm_process(&root);
+        palm_process(&root,TRUE);
         TX_SET(t,root,root);
         post_process(leaf_head);
         delete_leaves(leaf_head);
         leaf_head = get_leftest_leaf(root);
         TX_SET(t,leaf_head,leaf_head);
-        palm_process(&root);
+        palm_process(&root,FALSE);
         TX_SET(t,root,root);
-        leaf_head = get_leftest_leaf(root);
-        TX_SET(t,leaf_head,leaf_head);
     }TX_END
 }
-
