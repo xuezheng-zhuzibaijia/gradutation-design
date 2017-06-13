@@ -1,5 +1,0 @@
-#ifndef BASETYPE_H_INCLUDED
-#define BASETYPE_H_INCLUDED
-#define TRUE 1
-#define FALSE 0
-#endif // BASETYPE_H_INCLUDED

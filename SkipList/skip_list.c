@@ -115,7 +115,7 @@ static void skiplist_remove_level(snode_pointer n,int key,int level)
         return;
     }
     snode_pointer dnode = D_RO(temp)->next[level];
-    printf("dnode key is %d\n",D_RO(dnode)->key);
+    //printf("dnode key is %d\n",D_RO(dnode)->key);
     TX_SET(temp,next[level],D_RO(dnode)->next[level]);
     if(level>0)
     {
@@ -128,7 +128,7 @@ void skiplist_remove(PMEMobjpool *pop,int key)
 {
     if(!skiplist_is_in(pop,key))
     {
-        printf("key %d is not in skip list\n",key);
+        //printf("key %d is not in skip list\n",key);
         return;
     }//printf("here!\n");
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
@@ -184,7 +184,7 @@ void skiplist_insert(PMEMobjpool *pop,int key,void *value,size_t len)
 {
     if(skiplist_is_in(pop,key))
     {
-        printf("key %d is already in skip list\n",key);
+        //printf("key %d is already in skip list\n",key);
         return;
     }
     sroot_pointer root = POBJ_ROOT(pop,struct sroot);
@@ -213,7 +213,7 @@ void skiplist_insert(PMEMobjpool *pop,int key,void *value,size_t len)
         }
     }
     TX_ONCOMMIT{
-        printf("key %d insert successfully!\n",key);
+        //printf("key %d insert successfully!\n",key);
     }
     TX_END
 }

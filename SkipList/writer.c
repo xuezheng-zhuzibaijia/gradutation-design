@@ -17,13 +17,10 @@ int main(int argc,char**argv)
         skiplist_init(pop);
 
     }int write_times = atoi(argv[1]);
-    clock_t start = clock();
     for(int i = 0; i < write_times; i++)
     {
         skiplist_insert(pop,i,(void*)&i,sizeof(int));
-    }clock_t end = clock();
-    printf("%d,%f\n",write_times,(double)(end-start)/CLOCKS_PER_SEC);
-    //display(pop);
+    }
     if(pop!=NULL)
     {
         pmemobj_close(pop);

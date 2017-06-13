@@ -562,7 +562,7 @@ void tree_insert(PMEMobjpool *pop,int key,void *value,size_t len)
         }
         TX_ONCOMMIT
         {
-            printf("key %d insert successfully!\n",key);
+            //printf("key %d insert successfully!\n",key);
         }
         TX_END
     }

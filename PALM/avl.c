@@ -1,40 +1,34 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stddef.h>
 #include "avl.h"
-
-#define DEBUG(str)
-/**
- * avl.c是用于支持PALM树预处理的数据结构以及相关操作
- *
- */
-
-void avl_init(avl_pointer *avl_root,int *unbalanced)
-{
-        *avl_root = NULL;
-        *unbalanced = FALSE;
+avl_pointer make_avlnode(){
+    avl_pointer p = (avl_pointer)malloc(sizeof(struct avl_node));
+    if(p==NULL){
+        perror("avl node malloc failed");
+        exit(-1);
+    }
+    p->bf = 0;
+    p->data = 0;
+    p->lchild = p->rchild = NULL;
+    return p;
 }
-static void left_rotation(avl_pointer * parent,int *unbalanced)
-{
+void left_rotation(avl_pointer *parent,int *unbalanced){
     avl_pointer grand_child, child;
-    child = (*parent)->left_child;
+    child = (*parent)->lchild;
     if(child->bf == 1)
     {
-        /*LL rotation*/
-        (*parent)->left_child = child->right_child;
-        child->right_child = (*parent);
+        (*parent)->lchild = child->rchild;
+        child->rchild = (*parent);
         (*parent)->bf = 0;
         (*parent) = child;
     }
     else
     {
-        /*LR rotation*/
-        grand_child = child -> right_child;
-        child->right_child = grand_child->left_child;
-        grand_child->left_child = child;
-        (*parent)->left_child = grand_child->right_child;
-        grand_child->right_child = *parent;
+        grand_child = child -> rchild;
+        child->rchild = grand_child->lchild;
+        grand_child->lchild = child;
+        (*parent)->lchild = grand_child->rchild;
+        grand_child->rchild = *parent;
         switch(grand_child->bf)
         {
         case 1:
@@ -51,28 +45,23 @@ static void left_rotation(avl_pointer * parent,int *unbalanced)
     }(*parent)->bf = 0;
     *unbalanced = 0;
 }
-
-static void right_rotation(avl_pointer * parent,int *unbalanced)
-{
-    DEBUG("right_rotation\n");
+void right_rotation(avl_pointer *parent,int *unbalanced){
     avl_pointer grand_child, child;
-    child = (*parent)->right_child;
+    child = (*parent)->rchild;
     if(child->bf == -1)
     {
-        /*RR rotation*/
-        (*parent)->right_child= child->left_child;
-        child->left_child = (*parent);
+        (*parent)->rchild= child->lchild;
+        child->lchild = (*parent);
         (*parent)->bf = 0;
         (*parent) = child;
     }
     else
     {
-        /*RL rotation*/
-        grand_child = child -> left_child;
-        child->left_child = grand_child->right_child;
-        grand_child->right_child = child;
-        (*parent)->right_child = grand_child->left_child;
-        grand_child->left_child = *parent;
+        grand_child = child -> lchild;
+        child->lchild = grand_child->rchild;
+        grand_child->rchild = child;
+        (*parent)->rchild = grand_child->lchild;
+        grand_child->lchild = *parent;
         switch(grand_child->bf)
         {
         case 1:
@@ -89,34 +78,12 @@ static void right_rotation(avl_pointer * parent,int *unbalanced)
     }(*parent)->bf = 0;
     *unbalanced = 0;
 }
-/**
- *                            { -1  a  <  b
- *compare(a,b) = -{   0  a == b
- *                            {   1  a  >  b
- */
-void avl_insert(avl_pointer *parent,void *newdata,size_t data_size,int *unbalanced,void* (*construct)(void *newdata,size_t data_size),
-int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata))
-{
-    DEBUG("insert\n");
-    if(!(*parent))
-    {
-        DEBUG("NULL\n");
-        *unbalanced = TRUE;
-        *parent = (avl_pointer)malloc(sizeof(struct avl_node));
-        if((*parent)==NULL)
-        {
-            perror("AVL NODE MALLOC FAILED");
-            exit(-1);
-        }
-        (*parent)->bf = 0;
-        (*parent)->left_child = (*parent)->right_child = NULL;
+void avl_insert(avl_pointer *parent,int *unbalanced,void *newdata,size_t data_size,cmp cp,construct_func construct,update_func update){
+    if(!(*parent)){
+        *parent = make_avlnode();
         (*parent)->data = construct(newdata,data_size);
-        DEBUG("NULL_end\n");
-    }
-    else if(compare((*parent)->data,newdata)==1) //node value larger than newdata
-    {
-        DEBUG("left_start\n");
-        avl_insert(&((*parent)->left_child),newdata,data_size,unbalanced,construct,compare,update);
+    }else if(cp((*parent)->data,newdata)==1){
+        avl_insert(&((*parent)->lchild),unbalanced,newdata,data_size,cp,construct,update);
         if(*unbalanced)
         {
             switch((*parent)->bf)
@@ -132,11 +99,9 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
                 *unbalanced = FALSE;
                 break;
             }
-        }DEBUG("left_end\n");
-    }
-    else if(compare((*parent)->data,newdata)==-1)
-    {
-        avl_insert(&((*parent)->right_child),newdata,data_size,unbalanced,construct,compare,update);
+        }
+    }else if(cp((*parent)->data,newdata)==-1){
+        avl_insert(&((*parent)->rchild),unbalanced,newdata,data_size,cp,construct,update);
         if(*unbalanced)
         {
             switch((*parent)->bf)
@@ -152,85 +117,34 @@ int (*compare)(void *data,void *newdata),void (*update)(void *data,void *newdata
                 right_rotation(parent,unbalanced);
                 break;
             }
-        }DEBUG("right\n");
-    }
-    else
-    {
-        if(update!=NULL)
-        {
-            update((*parent)->data,newdata);
         }
+    }else{
+        (*parent)->data = update((*parent)->data,newdata);
         *unbalanced = FALSE;
     }
 }
+void * avl_read(avl_pointer parent,void *data,cmp cp){
+    if(!parent) return NULL;
+    if(cp(parent->data,data)==0) return parent->data;
+    if(cp(parent->data,data)==1) return avl_read(parent->lchild,data,cp);
+    return avl_read(parent->rchild,data,cp);
+}
+int avl_find(avl_pointer parent,void *data,cmp cp){
+    if(!parent) return 0;
+    if(cp(parent->data,data)==0) return 1;
+    if(cp(parent->data,data)==1) return avl_find(parent->lchild,data,cp);
+    return avl_find(parent->rchild,data,cp);
+}
+void avl_destory(avl_pointer *parent,void (*destroy)(void *data)){
+    if(*parent){
+        avl_destory(&((*parent)->lchild),destroy);
+        avl_destory(&((*parent)->rchild),destroy);
+        if(destroy){
+            destroy((*parent)->data);
+        }
+        free(*parent);
+        *parent = NULL;
 
-void avl_destroy(avl_pointer * parent)
-{
-    if(!(*parent)) return;
-    avl_destroy(&((*parent)->left_child));
-    avl_destroy(&((*parent)->right_child));
-    free(*parent);
-    *parent = NULL;
-}
-/**
-   *avl_nodenum(interval)--get the num of nodes data of which satisfied function 'contain'
-   */
-static int avl_nodenum(avl_pointer parent,contain_func contain,void *c)
-{
-    if(parent==NULL) return 0;
-    return contain(parent->data,c) +avl_nodenum(parent->left_child,contain,c) + avl_nodenum(parent->right_child,contain,c);
-}
-void static collect_interval(struct data_list * result,avl_pointer parent,contain_func contain,void *c)
-{
-    if(parent==NULL) return;
-    collect_interval(result,parent->left_child,contain,c);
-    if(contain(parent->data,c)){
-            result->data[result->num++] = parent->data;
     }
-    collect_interval(result,parent->right_child,contain,c);
 }
 
-struct data_list * avl_print(avl_pointer avl_root,contain_func contain,void *c)
-{
-    int num = avl_nodenum(avl_root,contain,c);
-    if(num == 0)  //no node satisfied the 'contain' function
-    {
-        return NULL;
-    }
-    struct data_list * result = (struct data_list *)malloc(sizeof(struct data_list));
-    if(result==NULL)
-    {
-        perror("DATA LIST MALLOC FAILED");
-        exit(-1);
-    }
-    void ** temp = (void **)malloc(sizeof(void*)*num);
-    if(temp==NULL)
-    {
-        perror("DATA MALLOC FAILED");
-        exit(-1);
-    }
-    result -> num = 0;
-    result->data = temp;
-    collect_interval(result,avl_root,contain,c);
-    return result;
-}
-
-void * avl_read(avl_pointer avl_root,void *newdata,int (*compare)(void* data,void *newdata))
-{
-    if(avl_root==NULL){
-        return NULL;
-    }void * result = NULL;
-    switch(compare(avl_root->data,newdata)){
-        case 0:
-            result = avl_root->data;
-            break;
-        case 1:
-            result = avl_read(avl_root->left_child,newdata,compare);
-            break;
-        case -1:
-            result = avl_read(avl_root->right_child,newdata,compare);
-            break;
-        default:
-            break;
-    }return result;
-}
