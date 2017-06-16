@@ -120,4 +120,5 @@ void set_now_modified_list();
 void palm_process(node_pointer *root);
 void preprocess();
 void preprocess_originop();
+void print_readresult();
 #endif // PALM_H_INCLUDED

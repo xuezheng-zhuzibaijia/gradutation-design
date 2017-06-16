@@ -3,10 +3,15 @@
 #include <pthread.h>
 #include <assert.h>
 #include "palm.h"
-#define DEBUG(s,...) //printf(s,##__VA_ARGS__)
+/**this for test,if you want to see the debug information please uncomment the printf*/
+#define DEBUG(s,...) //printf(s,##__VA_ARGS__) 
 int singleop_count;
 int nodeop_count;
 int modified_list_count;
+/*
+ single_tasks and modified_list are for now and next operation set.
+ when you use one of them as now operation set and the other is next operation set
+*/
 singleop single_tasks[MAX_LIST_SIZE];
 singleop modified_list[MAX_LIST_SIZE];
 nodeop tasks[MAX_LIST_SIZE];
@@ -14,10 +19,12 @@ singleop *nowtasks,*nexttasks;
 int *nowtasks_count,*nexttasks_count;
 struct _read_result read_results[MAX_LIST_SIZE];
 int read_results_count;
-int DELETE_FLAG = FALSE;
+int DELETE_FLAG = FALSE;  //marked if there is deleted leaf 
 int insert_results_count;
 struct insert_log insert_results[MAX_LIST_SIZE];
-
+/**
+ structures below is to allocate pmem in advance
+ */
 int free_count;
 PMEMoid free_records[MAX_LIST_SIZE*4];
 int node_alloc_count;
@@ -29,6 +36,8 @@ int leaf_alloc_max;
 
 int origin_op_count;
 struct origin_op origin_op_tasks[MAX_QUERY_SIZE];
+/**return a new internal node
+*/
 node_pointer make_node()
 {
     node_pointer t = TX_ZNEW(struct tree_node);
@@ -41,7 +50,7 @@ node_pointer make_node()
     }
     D_RW(t)->arg = TOID_NULL(struct leaf_arg);
     return t;
-}
+}/*return a new leaf*/
 node_pointer make_leaf()
 {
     node_pointer t = make_node();
@@ -49,6 +58,7 @@ node_pointer make_leaf()
     D_RW(t)->is_leaf = TRUE;
     return t;
 }
+/**transmit the volatile memory to persist one and free the volatile one*/
 PMEMoid make_record(void *data,size_t data_size)
 {
     PMEMoid t = pmemobj_tx_alloc(data_size,TOID_TYPE_NUM(void));
@@ -56,6 +66,9 @@ PMEMoid make_record(void *data,size_t data_size)
     free(data);
     return t;
 }
+/**
+  this function is used in multi-thread function
+*/
 node_pointer alloc_leaf()
 {
     int index = INCR(&leaf_alloc_count,1);
@@ -64,7 +77,7 @@ node_pointer alloc_leaf()
     }
     perror("alloc leaf is too few");
     exit(-1);
-}
+}/**same as above*/
 node_pointer alloc_node()
 {
     int index = INCR(&node_alloc_count,1);
@@ -74,8 +87,10 @@ node_pointer alloc_node()
     perror("alloc node is too few");
     exit(-1);
 }
+/*store the PMEMoid to be deleted*/
 void psefree(PMEMoid t)
 {
+    //DEBUG("add free %I64u",t.off);
     int index = INCR(&free_count,1);
     if(index < MAX_LIST_SIZE * 4) {
         free_records[index] = t;
@@ -84,6 +99,7 @@ void psefree(PMEMoid t)
         exit(-1);
     }
 }
+/**transmit the persist memory to volatile one*/
 void * get_record(PMEMoid value,size_t data_size)
 {
     void * result;
@@ -94,6 +110,7 @@ void * get_record(PMEMoid value,size_t data_size)
     memcpy(result,pmemobj_direct(value),data_size);
     return result;
 }
+/*initalize some parameters*/
 void palm_init(node_pointer *root)
 {
     read_results_count = 0;
@@ -138,6 +155,7 @@ static int search_exact(void * keys,size_t key_size,int length,void *key,cmp cp)
     }
     return -1;
 }
+/*if keys[i] <= key and key < keys[i+1] then return i+1*/
 static int search_fuzzy(void * keys,size_t key_size,int length,void *key,cmp cp)
 {
     int left = 0,right = length - 1;
@@ -452,7 +470,8 @@ void node_process(node_pointer *root,node_pointer n,key_t * keys,PMEMoid * value
                     destroy_subtree(n);
                 }
             }
-        }DEBUG("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
+        }
+        DEBUG("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
     } else {
         //DEBUG("splitting\n");
         D_RW(n)->num_keys = BTREE_ORDER/2;
@@ -513,19 +532,21 @@ void operation(node_pointer *root,nodeop np,int REBALANCE)
     } else {
         memcpy(values,D_RO(p)->pointers,sizeof(PMEMoid)*(length+1));
     }
-    if(TOID_EQUALS(*root,p)){
+    if(TOID_EQUALS(*root,p)) {
         DEBUG("this one is root ");
-    }else{
+    } else {
         DEBUG("ordinary node ");
-    }if(D_RO(p)->is_leaf){
+    }
+    if(D_RO(p)->is_leaf) {
         DEBUG("[leaf]");
-    }else{
+    } else {
         DEBUG("[node]");
     }
     DEBUG("thread %lu length %d |",pthread_self(),length);
-    for(int i = 0;i < length;i++){
+    for(int i = 0; i < length; i++) {
         DEBUG("%d ",keys[i]);
-    }DEBUG("\n");
+    }
+    DEBUG("\n");
     for(singleop * tmp = np.head; tmp!=NULL; tmp=tmp->next) {
         tmp->parent = p;
         switch(tmp->op) {
@@ -562,7 +583,7 @@ static void print_node(node_pointer n)
         }
         DEBUG("] ");
         return;
-    }else{
+    } else {
         DEBUG("[ children = %d |",D_RO(n)->num_keys);
         for(int i = 0; i < D_RO(n)->num_keys; i++) {
             DEBUG("%d ",D_RO(n)->keys[i]);
@@ -575,6 +596,7 @@ static void print_node(node_pointer n)
         print_node(c);
     }
 }
+/*print the tree*/
 void print_btree(node_pointer root)
 {
     if(TOID_IS_NULL(root)) {
@@ -583,6 +605,7 @@ void print_btree(node_pointer root)
         print_node(root);
     }
 }
+/*after a stage,make the next operation set to now*/
 void circle()
 {
     int * temp1;
@@ -598,6 +621,7 @@ void circle()
 
     *nexttasks_count = 0;
 }
+/*find the leftest leaf of tree*/
 node_pointer get_leftest_leaf(node_pointer root)
 {
     node_pointer c = root;
@@ -624,7 +648,7 @@ void set_now_modified_list()
     nexttasks = single_tasks;
     nexttasks_count = &singleop_count;
 }
-
+/*after palm to delete marked leaves and put their keys and values to list which should be reinserted*/
 void clear_mess(node_pointer leaf)
 {
     set_now_single();
@@ -683,6 +707,7 @@ void *update_preprocess(void *data,void *newdata)
 {
     return data;
 }
+/*preprocess the operation set*/
 void preprocess()
 {
     preprocess_originop();
@@ -799,17 +824,17 @@ void print_read_range_op(struct origin_op op)
 {
     if(op.op==READ) {
         if(op.v) {
-            DEBUG("[read <%d %d>] ",op.key,*((int*)op.v));
+            printf("[read <%d %d>] ",op.key,*((int*)op.v));
             free(op.v);
         } else {
-            DEBUG("[read <%d null>]",op.key);
+            printf("[read <%d null>]",op.key);
         }
     } else {
-        DEBUG("range [%d %d]:",op.m,op.n);
+        printf("range [%d %d]:",op.m,op.n);
         for(struct read_pair * t = op.head; t; t=t->next) {
-            DEBUG("<%d,%d>",t->key,*((int *)t->v));
+            printf("<%d,%d>",t->key,*((int *)t->v));
         }
-        DEBUG("\n");
+        printf("\n");
         struct read_pair head;
         head.next = op.head;
         while(head.next) {
@@ -820,9 +845,10 @@ void print_read_range_op(struct origin_op op)
     }
     DEBUG("\n\n");
 }
+/*read and range operation */
 void range_operation(struct origin_op *op,node_pointer leaf,avl_pointer avl_root)
 {
-    //DEBUG("in range_operation\n");
+    DEBUG("in range_operation id %d\n",(op->op==READ)?op->read_id:op->range_id);
     if(op->op == READ) {
         //struct _read_result * result = (struct _read_result *)bsearch(&op.read_id,read_results,read_results_count,sizeof(struct _read_result),compare_id_readresult);
         //DEBUG("in read\n");
@@ -873,6 +899,30 @@ void range_operation(struct origin_op *op,node_pointer leaf,avl_pointer avl_root
             }
         }
     }
+    for(;result_count < op->range_num;result_count++) {
+        if(result[result_count].value == NULL) {
+            continue;
+        }
+        struct read_pair * tmp = make_readpair(result[result_count].key,result[result_count].data_size,result[result_count].value);
+        if(op->head==NULL) {
+            op->head =op->tail = tmp;
+        } else {
+            op->tail->next=tmp;
+            op->tail=tmp;
+        }
+    }
+}
+void print_readrecords()
+{
+    for(int i = 0; i < read_results_count; i++) {
+        printf("[id %d key %d ",read_results[i].id,read_results[i].key);
+        if(read_results[i].value) {
+            printf("v %d]",*((int*)read_results[i].value));
+        } else {
+            printf("v null]");
+        }
+    }
+    printf("\n");
 }
 int compare_id(const void *a,const void *b)
 {
@@ -891,13 +941,17 @@ void * parrell_operation(void *arg)
 }
 void post_process()
 {
+   // DEBUG("leaf_alloc_count %d node_alloc_count %d free_count %d\n",leaf_alloc_count,node_alloc_count,free_count);
     for(int i = leaf_alloc_count; i < leaf_alloc_max; i++) {
+     //   DEBUG("in free leaf %d\n",i);
         TX_FREE(leafs[i]);
     }
     for(int i = node_alloc_count; i < node_alloc_max; i++) {
+       // DEBUG("in free nodes %d\n",i);
         TX_FREE(internal_nodes[i]);
     }
     for(int i = 0; i < free_count; i++) {
+        //DEBUG("in free record %d\n",i);
         pmemobj_tx_free(free_records[i]);
     }
 }
@@ -940,8 +994,6 @@ void palm_process(node_pointer *root)
         assignargs[i].root = *root;
         assignargs[i].start_index = i;
         assignargs[i].step = THREAD_NUM;
-    }
-    for(int i = 0; i < THREAD_NUM; i++) {
         pthread_create(&threads[i],NULL,(void *)assigntask,(void *)&assignargs[i]);
     }
     for(int j = 0; j < THREAD_NUM; j++) {
@@ -979,12 +1031,15 @@ void palm_process(node_pointer *root)
         pthread_join(threads[i],NULL);
     }
     avl_destory(&avl_root,NULL);
-    DEBUG("after print record\n");
+    print_readresult();
+    DEBUG("read result count %d\n",read_results_count);
+    DEBUG("print record\n");
+    //print_readrecords();
     while(*nexttasks_count) {
-        print_singleop();
+        //print_singleop();
         assert(nexttasks!=NULL);
         DEBUG("nexttasks %d singleop %d modified_list %d\n",*nexttasks_count,singleop_count,modified_list_count);
-        fflush(stdout);
+        //fflush(stdout);
         circle();
         redistribute_singleop();
         DEBUG("after redistribute\n");
@@ -1044,7 +1099,6 @@ void palm_process(node_pointer *root)
         }
     }
     post_process();
-    print_readresult();
     //DEBUG("here!\n");
 }
 void * construct_opavl(void *data,size_t data_size)
