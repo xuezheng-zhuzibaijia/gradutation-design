@@ -8,7 +8,7 @@
 
 * Btree---B+树
 * SkipList---跳表
-
+* Palm --- Palm模型
 
 展示树需要:[graphviz](http://www.graphviz.org/)和eog
 
